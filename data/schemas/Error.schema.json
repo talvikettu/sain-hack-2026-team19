@@ -1,0 +1,57 @@
+{
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "code",
+    "message",
+    "request_id"
+  ],
+  "properties": {
+    "code": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "message": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "rate_limit": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "const": "budget_exhausted",
+              "type": "string"
+            },
+            {
+              "const": "token_limit",
+              "type": "string"
+            },
+            {
+              "const": "request_limit",
+              "type": "string"
+            },
+            {
+              "const": "unknown",
+              "type": "string"
+            }
+          ]
+        },
+        "retry_after_seconds": {
+          "minimum": 0,
+          "maximum": 2147483647,
+          "type": "integer"
+        }
+      }
+    },
+    "request_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  }
+}

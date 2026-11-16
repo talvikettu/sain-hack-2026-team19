@@ -1,0 +1,22 @@
+{
+  "downloaded_at_utc": "2026-11-16T22:07:35.943235+00:00",
+  "meta": {
+    "schema_version": "0.3.0",
+    "dataset_id": "case4-dev-v2",
+    "case_id": 4,
+    "phase": "dev",
+    "version": "2",
+    "generated_at": "2026-11-15T22:18:07+03:00",
+    "history_through": "2026-11-11"
+  },
+  "counts": {
+    "articles": 20,
+    "experts": 3,
+    "users": 2,
+    "chat_history": 26,
+    "requests": 60,
+    "judge_prompts": 3,
+    "reference_requests": 60
+  },
+  "sections": 609
+}

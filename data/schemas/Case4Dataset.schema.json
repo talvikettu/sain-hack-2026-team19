@@ -1,0 +1,790 @@
+{
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "meta",
+    "users",
+    "chat_history",
+    "articles",
+    "experts",
+    "requests",
+    "judge_prompts"
+  ],
+  "properties": {
+    "meta": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "schema_version",
+        "dataset_id",
+        "case_id",
+        "phase",
+        "version",
+        "generated_at",
+        "history_through"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.3.0",
+          "type": "string"
+        },
+        "dataset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "type": "string"
+        },
+        "case_id": {
+          "const": 4,
+          "type": "number"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "const": "dev",
+              "type": "string"
+            },
+            {
+              "const": "online",
+              "type": "string"
+            },
+            {
+              "const": "final",
+              "type": "string"
+            }
+          ]
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?[+-]\\d{2}:\\d{2}$",
+          "description": "ISO 8601 с явным смещением; Z и время без смещения не допускаются.",
+          "type": "string"
+        },
+        "history_through": {
+          "const": "2026-11-11",
+          "type": "string"
+        }
+      }
+    },
+    "users": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "birth_date",
+          "timezone",
+          "goal",
+          "chronotype",
+          "weekday_bedtime",
+          "weekday_wake_time",
+          "average_sleep_hours",
+          "social_jetlag",
+          "activity_level",
+          "sedentary_hours",
+          "training_days",
+          "works_from_home",
+          "phone_before_sleep",
+          "movement_index",
+          "sleep_preferences",
+          "disabled_widget_ids"
+        ],
+        "properties": {
+          "user_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "birth_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "format": "iana-timezone",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "kind",
+                  "description"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "sleep",
+                        "type": "string"
+                      },
+                      {
+                        "const": "weight",
+                        "type": "string"
+                      },
+                      {
+                        "const": "energy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chronotype": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "early",
+                    "type": "string"
+                  },
+                  {
+                    "const": "intermediate",
+                    "type": "string"
+                  },
+                  {
+                    "const": "late",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weekday_bedtime": {
+            "anyOf": [
+              {
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weekday_wake_time": {
+            "anyOf": [
+              {
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "average_sleep_hours": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "maximum": 24,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "social_jetlag": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activity_level": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "low",
+                    "type": "string"
+                  },
+                  {
+                    "const": "medium",
+                    "type": "string"
+                  },
+                  {
+                    "const": "high",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sedentary_hours": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "lt6",
+                    "type": "string"
+                  },
+                  {
+                    "const": "6to9",
+                    "type": "string"
+                  },
+                  {
+                    "const": "gt9",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "training_days": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "0",
+                    "type": "string"
+                  },
+                  {
+                    "const": "1to2",
+                    "type": "string"
+                  },
+                  {
+                    "const": "3plus",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "works_from_home": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phone_before_sleep": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "movement_index": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "lt50",
+                    "type": "string"
+                  },
+                  {
+                    "const": "50to70",
+                    "type": "string"
+                  },
+                  {
+                    "const": "70to85",
+                    "type": "string"
+                  },
+                  {
+                    "const": "85plus",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sleep_preferences": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "temperature",
+                  "light_sensitive",
+                  "favorite_track_ids",
+                  "dislikes"
+                ],
+                "properties": {
+                  "temperature": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "cool",
+                            "type": "string"
+                          },
+                          {
+                            "const": "normal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "warm",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "light_sensitive": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "favorite_track_ids": {
+                    "anyOf": [
+                      {
+                        "uniqueItems": true,
+                        "type": "array",
+                        "items": {
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dislikes": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "disabled_widget_ids": {
+            "anyOf": [
+              {
+                "uniqueItems": true,
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "const": "sleep_card",
+                      "type": "string"
+                    },
+                    {
+                      "const": "day_plan",
+                      "type": "string"
+                    },
+                    {
+                      "const": "breathing_timer",
+                      "type": "string"
+                    },
+                    {
+                      "const": "focus_block",
+                      "type": "string"
+                    },
+                    {
+                      "const": "steps_ring",
+                      "type": "string"
+                    },
+                    {
+                      "const": "workout_suggest",
+                      "type": "string"
+                    },
+                    {
+                      "const": "meal_log",
+                      "type": "string"
+                    },
+                    {
+                      "const": "habit_check",
+                      "type": "string"
+                    },
+                    {
+                      "const": "diary_prompt",
+                      "type": "string"
+                    },
+                    {
+                      "const": "wind_down",
+                      "type": "string"
+                    },
+                    {
+                      "const": "weekly_trend",
+                      "type": "string"
+                    },
+                    {
+                      "const": "restart_card",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "chat_history": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message_id",
+          "user_id",
+          "role",
+          "at",
+          "text"
+        ],
+        "properties": {
+          "message_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "user_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "const": "user",
+                "type": "string"
+              },
+              {
+                "const": "agent",
+                "type": "string"
+              }
+            ]
+          },
+          "at": {
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?[+-]\\d{2}:\\d{2}$",
+            "description": "ISO 8601 с явным смещением; Z и время без смещения не допускаются.",
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      }
+    },
+    "articles": {
+      "minItems": 20,
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "article_id",
+          "title",
+          "authors",
+          "year",
+          "doi",
+          "license",
+          "sections"
+        ],
+        "properties": {
+          "article_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "authors": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "year": {
+            "minimum": 1800,
+            "maximum": 2026,
+            "type": "integer"
+          },
+          "doi": {
+            "pattern": "^10\\.\\d{4,9}/\\S+$",
+            "type": "string"
+          },
+          "license": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "name",
+              "version",
+              "url"
+            ],
+            "properties": {
+              "name": {
+                "const": "CC BY",
+                "type": "string"
+              },
+              "version": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "type": "string"
+              }
+            }
+          },
+          "sections": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "additionalProperties": false,
+              "type": "object",
+              "required": [
+                "section_id",
+                "title",
+                "text"
+              ],
+              "properties": {
+                "section_id": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                  "type": "string"
+                },
+                "title": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "text": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "experts": {
+      "minItems": 3,
+      "maxItems": 3,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expert_id",
+          "role",
+          "speech_style"
+        ],
+        "properties": {
+          "expert_id": {
+            "anyOf": [
+              {
+                "const": "clinician",
+                "type": "string"
+              },
+              {
+                "const": "biohacker",
+                "type": "string"
+              },
+              {
+                "const": "nutritionist",
+                "type": "string"
+              }
+            ]
+          },
+          "role": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "speech_style": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_id",
+          "user_id",
+          "expert_id",
+          "group_id",
+          "utterance"
+        ],
+        "properties": {
+          "record_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "user_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "expert_id": {
+            "anyOf": [
+              {
+                "const": "clinician",
+                "type": "string"
+              },
+              {
+                "const": "biohacker",
+                "type": "string"
+              },
+              {
+                "const": "nutritionist",
+                "type": "string"
+              }
+            ]
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "utterance": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "role",
+              "at",
+              "text"
+            ],
+            "properties": {
+              "role": {
+                "const": "user",
+                "type": "string"
+              },
+              "at": {
+                "format": "date-time",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?[+-]\\d{2}:\\d{2}$",
+                "description": "ISO 8601 с явным смещением; Z и время без смещения не допускаются.",
+                "type": "string"
+              },
+              "text": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "judge_prompts": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt_id",
+          "version",
+          "purpose",
+          "text",
+          "model_version",
+          "temperature"
+        ],
+        "properties": {
+          "prompt_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "purpose": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "model_version": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "temperature": {
+            "const": 0,
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
