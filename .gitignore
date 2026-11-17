@@ -1,1 +1,12 @@
 team19/
+
+# Local preprocessing artifacts and Python caches
+tmp/
+.rag-cache/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-*
+.env
+.env.*
+!.env.example

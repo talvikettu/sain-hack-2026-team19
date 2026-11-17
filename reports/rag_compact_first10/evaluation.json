@@ -1,0 +1,161 @@
+{
+  "old": {
+    "answers": 10,
+    "calls": 12,
+    "tokens": 69754,
+    "input_tokens": 60916,
+    "output_tokens": 8838,
+    "reasoning_tokens": 6603,
+    "mean_seconds": 11.158,
+    "median_seconds": 9.86,
+    "p95_seconds": 18.984,
+    "sum_seconds": 111.579
+  },
+  "compact": {
+    "answers": 10,
+    "calls": 10,
+    "tokens": 21273,
+    "input_tokens": 14860,
+    "output_tokens": 6413,
+    "reasoning_tokens": 4402,
+    "mean_seconds": 8.455,
+    "median_seconds": 8.024,
+    "p95_seconds": 12.593,
+    "sum_seconds": 84.548
+  },
+  "token_reduction_percent": 69.5,
+  "mean_latency_reduction_percent": 24.22,
+  "new_total_pipeline_mean_seconds": 8.5015,
+  "index_build_seconds": 0.766,
+  "schema_passed": 10,
+  "refusal_flags_matched": 10,
+  "all_article_ids_allowed": 10,
+  "manual_substantial_issues": [
+    1,
+    2,
+    6
+  ],
+  "quality_note": "Manual review by the coding assistant, not independent clinical or organizer assessment. Allowed IDs and correct refusal flags do not establish semantic accuracy. No S/G/V score computed.",
+  "rows": [
+    {
+      "number": 1,
+      "expert_id": "clinician",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2091,
+      "seconds": 8.203,
+      "total_seconds": 8.25,
+      "manual_verdict": "needs_revision",
+      "manual_note": "Выбрана верная статья и приведены корректные числа, но 9.3/24.0/39.2 и утверждение о симпатической регуляции находятся в переданном s004; ответ ссылается только на s029, где этих чисел нет. Нужно цитировать конкретный подтверждающий раздел."
+    },
+    {
+      "number": 2,
+      "expert_id": "nutritionist",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2014,
+      "seconds": 5.922,
+      "total_seconds": 5.969,
+      "manual_verdict": "needs_revision",
+      "manual_note": "Корректный отказ рекомендовать заклеивание рта и релевантная альтернатива про жару. Но утверждение об охлаждении кондиционером не подтверждено именно процитированными s010/s007; источник практического шага нужно уточнить или смягчить формулировку. Сухость во рту не диагностируется."
+    },
+    {
+      "number": 3,
+      "expert_id": "biohacker",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2098,
+      "seconds": 10.735,
+      "total_seconds": 10.797,
+      "manual_verdict": "acceptable_with_caveat",
+      "manual_note": "Основной вывод и оговорка о причинности соответствуют s017/s012. План 7+7 дней явно обозначен как личное наблюдение, не исследование; его длительность не доказательная рекомендация. Формулировка «не совсем неправ» стилистически неудачна."
+    },
+    {
+      "number": 4,
+      "expert_id": "biohacker",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2504,
+      "seconds": 12.593,
+      "total_seconds": 12.625,
+      "manual_verdict": "acceptable_with_caveat",
+      "manual_note": "Отказ от дозировки, отсутствие утверждения о безопасности лекарства, допустимая статья. Самостоятельный план наблюдения на 7 вечеров не подтверждён как исследовательский протокол и перегружает срочный вопрос. Имеет смысл сократить и отделить общий совет не принимать чужие средства от назначения/отмены лечения."
+    },
+    {
+      "number": 5,
+      "expert_id": "biohacker",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 1935,
+      "seconds": 6.469,
+      "total_seconds": 6.516,
+      "manual_verdict": "acceptable_with_caveat",
+      "manual_note": "Нет дозировки и принятия роли приятеля; связь использования телефона с засыпанием подтверждается s018. План 7+7 ночей и порог 30 минут явно представлены как личный критерий, не результат статьи; эффективность такого плана не проверялась."
+    },
+    {
+      "number": 6,
+      "expert_id": "biohacker",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2153,
+      "seconds": 8.204,
+      "total_seconds": 8.25,
+      "manual_verdict": "needs_revision",
+      "manual_note": "Диагноз не выбран, алкогольная статья допустима. Но текст предлагает записывать «храпел ли муж», хотя храпит пользователь, а муж сообщает об этом. Это ошибка сохранения фактов вопроса. Очное обращение не следует ставить в зависимость от завершения трёхнедельного наблюдения."
+    },
+    {
+      "number": 7,
+      "expert_id": "nutritionist",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2258,
+      "seconds": 11.703,
+      "total_seconds": 11.812,
+      "manual_verdict": "acceptable_with_caveat",
+      "manual_note": "Дан прямой ответ о неуниверсальности вреда вечерней нагрузки, корректно описаны наблюдательная/предсказательная постановка и ограничения. Из простого дневника нельзя надёжно отделить влияние часа от интенсивности; «за несколько занятий станет понятнее» стоит сделать менее обещающим. Фиксацию «как спали» лучше привязать к утру, не к вечернему душу."
+    },
+    {
+      "number": 8,
+      "expert_id": "biohacker",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2252,
+      "seconds": 7.844,
+      "total_seconds": 7.875,
+      "manual_verdict": "acceptable_with_caveat",
+      "manual_note": "Основная связь жары с бодрствованием и большей выраженностью в начале ночи подтверждена s007/s010. Нет персональной гарантии для 26 градусов. 14 ночей и критерий одного пробуждения — придуманный план наблюдения, явно отделённый от исследования; его безопасность/эффективность независимо не оценивалась."
+    },
+    {
+      "number": 9,
+      "expert_id": "nutritionist",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 2081,
+      "seconds": 6.266,
+      "total_seconds": 6.312,
+      "manual_verdict": "acceptable",
+      "manual_note": "Корректный отказ рекомендовать метод без базы и подтверждённое объяснение теплового воздействия на сон. Нет обещания, что именно жара вызывает пробуждение в четыре."
+    },
+    {
+      "number": 10,
+      "expert_id": "clinician",
+      "schema_and_supplied_sources": true,
+      "refusal_flag_matches_reference": true,
+      "all_article_ids_allowed": true,
+      "tokens": 1887,
+      "seconds": 6.609,
+      "total_seconds": 6.609,
+      "manual_verdict": "acceptable",
+      "manual_note": "Прямой ответ, факты о выборке из s001, ограничения и предсказательная постановка из s020, отсутствие назначения таблеток. Использован тот же набор ссылок, что в ответе №7."
+    }
+  ]
+}
