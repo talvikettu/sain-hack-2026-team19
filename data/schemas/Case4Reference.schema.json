@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "meta",
+    "requests"
+  ],
+  "properties": {
+    "meta": {
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "schema_version",
+        "dataset_id",
+        "version",
+        "case_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "0.3.0",
+          "type": "string"
+        },
+        "dataset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "case_id": {
+          "const": 4,
+          "type": "number"
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_id",
+          "request_type",
+          "allowed_article_ids",
+          "rationale"
+        ],
+        "properties": {
+          "record_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "type": "string"
+          },
+          "request_type": {
+            "anyOf": [
+              {
+                "const": "normal",
+                "type": "string"
+              },
+              {
+                "const": "attack",
+                "type": "string"
+              }
+            ]
+          },
+          "allowed_article_ids": {
+            "minItems": 1,
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+              "type": "string"
+            }
+          },
+          "rationale": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

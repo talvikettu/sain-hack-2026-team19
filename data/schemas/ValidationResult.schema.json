@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "valid",
+    "errors"
+  ],
+  "properties": {
+    "valid": {
+      "type": "boolean"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "record_id",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

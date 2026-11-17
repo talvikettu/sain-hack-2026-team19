@@ -1,0 +1,328 @@
+{
+  "/case/4/getData": {
+    "get": {
+      "operationId": "getCase4Data",
+      "tags": [
+        "Кейс 4"
+      ],
+      "summary": "Получить закреплённую версию набора одной пачкой",
+      "description": "Bearer-токен ограничен списком dataset_id и окном действия. Эталон возвращается только для dev. Для online/final reference=null. Скрытый сценарий не выдаётся ни на одном этапе. Токен прогона отдаёт только набор своего прогона и только до expires_at (403 RUN_EXPIRED, RUN_REVOKED). До начала online — 403 RUN_NOT_STARTED. Финальный доступ не ограничен 45 минутами, действует до окончания окна токена.",
+      "parameters": [
+        {
+          "name": "dataset_code",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Точный dataset_id, например case1-dev-v1. Обязателен для токенов из API_TOKENS; с токеном прогона необязателен, чужой код — 403."
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Неизменяемый набор",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "dataset",
+                  "reference"
+                ],
+                "properties": {
+                  "dataset": {
+                    "$ref": "#/components/schemas/Case4Dataset"
+                  },
+                  "reference": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Case4Reference"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Неверный запрос",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Неверный или истёкший токен",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "403": {
+          "description": "Нет доступа к набору или этапу",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "404": {
+          "description": "Набор не найден",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Внутренняя ошибка",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/case/4/validate": {
+    "post": {
+      "operationId": "validateCase4Answers",
+      "tags": [
+        "Кейс 4"
+      ],
+      "summary": "Проверить формат ответов на наборе dev",
+      "description": "Контекст набора определяется токеном; на кейс должен быть закреплён ровно один dev-набор. Проверяются схема и ссылки. В кейсе 2 проверяются существование, тип записи, принадлежность и единый прогон сеансов, а также наличие сценария заезда. Эта операция не оценивает ответы и не проверяет медицинские формулировки.",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Case4Answers"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Результат проверки, в том числе ошибки формата",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidationResult"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Неразбираемый JSON",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Неверный или истёкший токен",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "403": {
+          "description": "Метод разрешён только для dev; токен прогона не принимается",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "409": {
+          "description": "Контекст набора неоднозначен",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "413": {
+          "description": "Превышен размер тела 32 МиБ",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Внутренняя ошибка",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/case/4/medcheck": {
+    "post": {
+      "operationId": "medcheckCase4Texts",
+      "tags": [
+        "Кейс 4"
+      ],
+      "summary": "Пробная проверка пользовательских текстов на dev",
+      "description": "Только team/admin с единственным dev-набором кейса 4. Токены прогона и online/final не принимаются. Один текст до 2000 символов за запрос. По умолчанию на team_id суммарно по кейсам 1–4: 1 запрос за 60 секунд и 20000 зарезервированных токенов за 24 часа; на весь dev: 40 запросов за 60 секунд и 700000 токенов за 24 часа. Неиспользованный резерв освобождается после получения фактического usage. Квоты задаются через MEDCHECK_TEAM_* и MEDCHECK_DEV_*, сохраняются между перезапусками; admin также учитывается. Резерв включает промпт и ограниченный ответ, при попадании в кеш или словарь токенный расход нулевой; при неизвестном расходе и ошибке провайдера сохраняется резерв. Превышение даёт 429 с Retry-After до проверки. Тексты проверяются по той же политике и модели, что при оценивании. Сбой модели возвращает ошибку, а не clean.",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MedcheckRequest"
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Вердикты в порядке входных текстов",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedcheckResponse"
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Неверный JSON или массив texts",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Неверный или истёкший токен",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "403": {
+          "description": "Метод доступен только для dev",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "409": {
+          "description": "Контекст dev-набора неоднозначен",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "413": {
+          "description": "Превышен размер тела medcheck 16 КиБ",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "429": {
+          "description": "Превышена квота команды или общий бюджет dev-medcheck",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          },
+          "headers": {
+            "Retry-After": {
+              "description": "Через сколько секунд можно повторить запрос",
+              "schema": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "500": {
+          "description": "Внутренняя ошибка",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "502": {
+          "description": "Неверный ответ проверяющей модели",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        },
+        "503": {
+          "description": "Не настроены БД/medcheck или модель недоступна",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Error"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,143 @@
+# Direct Measurements of Smartphone Screen-Time: Relationships with Demographics and Sleep
+
+Article ID: `art_11`
+
+Authors: Matthew A Christensen, Laura Bettencourt, Leanne Kaye, Sai T Moturu, Kaylin T Nguyen, Jeffrey E Olgin, Mark J Pletcher, Gregory M Marcus
+
+Year: 2016
+
+DOI: https://doi.org/10.1371/journal.pone.0165331
+
+License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/
+
+## Abstract › Background
+
+Section ID: `s001`
+
+Smartphones are increasingly integrated into everyday life, but frequency of use has not yet been objectively measured and compared to demographics, health information, and in particular, sleep quality.
+
+## Abstract › Aims
+
+Section ID: `s002`
+
+The aim of this study was to characterize smartphone use by measuring screen-time directly, determine factors that are associated with increased screen-time, and to test the hypothesis that increased screen-time is associated with poor sleep.
+
+## Abstract › Methods
+
+Section ID: `s003`
+
+We performed a cross-sectional analysis in a subset of 653 participants enrolled in the Health eHeart Study, an internet-based longitudinal cohort study open to any interested adult (≥ 18 years). Smartphone screen-time (the number of minutes in each hour the screen was on) was measured continuously via smartphone application. For each participant, total and average screen-time were computed over 30-day windows. Average screen-time specifically during self-reported bedtime hours and sleeping period was also computed. Demographics, medical information, and sleep habits (Pittsburgh Sleep Quality Index–PSQI) were obtained by survey. Linear regression was used to obtain effect estimates.
+
+## Abstract › Results
+
+Section ID: `s004`
+
+Total screen-time over 30 days was a median 38.4 hours (IQR 21.4 to 61.3) and average screen-time over 30 days was a median 3.7 minutes per hour (IQR 2.2 to 5.5). Younger age, self-reported race/ethnicity of Black and "Other" were associated with longer average screen-time after adjustment for potential confounders. Longer average screen-time was associated with shorter sleep duration and worse sleep-efficiency. Longer average screen-times during bedtime and the sleeping period were associated with poor sleep quality, decreased sleep efficiency, and longer sleep onset latency.
+
+## Abstract › Conclusions
+
+Section ID: `s005`
+
+These findings on actual smartphone screen-time build upon prior work based on self-report and confirm that adults spend a substantial amount of time using their smartphones. Screen-time differs across age and race, but is similar across socio-economic strata suggesting that cultural factors may drive smartphone use. Screen-time is associated with poor sleep. These findings cannot support conclusions on causation. Effect-cause remains a possibility: poor sleep may lead to increased screen-time. However, exposure to smartphone screens, particularly around bedtime, may negatively impact sleep.
+
+## Introduction
+
+Section ID: `s006`
+
+Smartphones are increasingly integrated into everyday life [1]. At the same time, the prevalence of insomnia and sleep deprivation have risen [2]. Poor sleep (too little or too much, and poor quality) has been shown to be a risk factor for obesity, diabetes, cardiovascular disease, depression, and overall mortality [3,4]. Light in the blue spectrum, such as light produced from a smartphone, can suppress production of melatonin, leading to decreased drowsiness, difficulty initiating sleep, and non-restorative sleep [5,6]. In addition, engrossing activities during smartphone use may result in stimulation that is counter-productive to sleep preparation. Limiting the use of TV and computers near bedtime is commonly recommended as an important part of good sleep hygiene [7], but direct measurements of “screen-time” in native (or home) environments have not previously been available. We sought to leverage data from the Health eHeart Study to (1) characterize the average amount and distribution of smartphone screen-time measured directly in a national cohort, (2) identify factors associated with increased screen-time, and (3) test the a priori hypothesis that increased screen-time is associated with decreased sleep quality.
+
+## Methods › Study Design
+
+Section ID: `s007`
+
+The Health eHeart Study (www.health-eheartstudy.org) is an internet-based prospective cohort that began enrolling any interested adult age ≥ 18 years with an active email address on March 8th, 2013. Participants were recruited via online and social media advertisements, email campaigns with research and advocacy organizations, and directly in person at University of California, San Francisco medical clinics. Consent was obtained electronically through the study website. We initially performed comparisons between prospectively collected screen-time and baseline demographics, medical history, and health behaviors in a hypothesis free manner. We then focused on participants who had completed a baseline sleep survey to specifically test the hypothesis that more screen-time would be associated with reduced sleep quality. The study was approved by the University of California, San Francisco Committee on Human Research.
+
+## Methods › Measurement of Smartphone Screen-time
+
+Section ID: `s008`
+
+On September 1, 2014, participants with smartphones were invited to download a mobile application (“app”) developed by Ginger.io (San Francisco, CA); this mobile app was capable of recording screen-time on Android-based smartphones. Once downloaded, the app automatically operated in the background without disrupting normal use of the smartphone. The app recorded screen-time continuously as the number of minutes in each hour that the screen was turned on as long as the smartphone was not in “airplane mode” and the app was not actively turned off. This screen-time measure was stored locally on the smartphone and transmitted over the Internet to the study database daily. Screen-time data was collected on existing and new participants between September 1, 2014 and September 30, 2015. The amount of missing data (due to phone-off, airplane mode, or app-off) in 30-day rolling windows was computed and the windows with the minimum level of missing data were identified and selected for analysis. In the event of ties, the earliest window with the minimum amount of missing data for each participant was selected for analysis. Participants with no screen-time data (100% missing data) or less than 30 days of observation were excluded. Within the selected 30-day window, the overall average screen-time (averaged over all hours in 30 days) and the hourly average screen-time (during each hour of the day, averaged over 30 days) were computed for each participant.
+
+## Methods › Ascertainment of Demographic and Medical Information
+
+Section ID: `s009`
+
+Participants provided baseline personal, demographic, and medical information via several online surveys once during their initial “eVisit.” Race and ethnicity were combined into a single mutually exclusive covariate (“race/ethnicity”), where Hispanic ethnicity, if present, took precedence over selected race. Self-reported height and weight were used to calculate body mass index (BMI). The validated Patient Health Questionnaire Overview (PHQ-9) was used to assess mood [8]. The validated International Physical Activity Questionnaire (IPAQ) was used to assess physical activity [9]. The validated Pittsburg Sleep Quality Index (PSQI) was used to assess sleep duration, quality, and the sleeping period (bedtime and wake-up time) [10,11]. The total PSQI score and component sub-scores were analyzed as continuous variables and “poor sleep” was defined as dichotomous variable by PSQI total > 5, per instrument protocol [12].
+
+## Methods › Statistical Analyses (1/2)
+
+Section ID: `s010`
+
+Continuous variables with a normal distribution are presented as means ± standard deviations (SDs) and were compared with student’s t-tests. Non-normally distributed continuous variables are presented as medians and interquartile ranges (IQR) and were compared with the Wilcoxon rank-sum test. Categorical variables are presented as counts and percentages of the population and were compared with chi-squared tests. Associations between average screen-time and baseline demographics, medical history, and behaviors were assessed first in a bivariate manner using linear regression models. Variables that were associated with average screen-time with two-tailed p < 0.10 in the bivariate analyses were retained in a single multivariate linear regression model where significance was considered at the standard two-tailed p < 0.05 level. Variables that remained statistically significantly associated with screen-time in the multivariate model were interpreted as independent predictors of screen-time. Variables that were no longer associated with screen-time in the multivariable model were considered to have been confounded by other variables, and were interpreted as not being key independent predictors. A sensitivity analysis was performed by restricting to those with complete screen-time data (no missing data) over the 30-day window.
+
+## Methods › Statistical Analyses (2/2)
+
+Section ID: `s011`
+
+Hypothesis-driven analyses related to screen-time and sleep were restricted to participants that completed the PSQI. Age, sex, and a history of sleep apnea were a priori “forced” into adjusted linear regression models along with other covariates that were significant (p<0.05) in the hypothesis-free multivariate model. Based on a priori hypotheses, select measures from the PSQI were compared to the average screen-time in the hours near self-reported bedtime (1 hour before participant-reported bedtime, the hour of participant-reported bedtime, 1 hour after the participant-reported bedtime) and during the sleep period (bedtime hour to wake-up hour) in a subgroup with no missing screen data. Statistical analyses were performed using STATA 13 (College Station, TX). Two tailed p values <0.05 were considered statistically significant.
+
+## Results › Participants
+
+Section ID: `s012`
+
+Among 23,187 Health eHeart participants enrolled by September 1, 2015, there were 3,566 that had downloaded the Ginger.io app of which 761 had Android-based phones that enabled capture of screen-time. Of these, 653 completed the core surveys in eVisit 1, had the app downloaded for at least 30 days, and had at least some (i.e., not 100% missing) screen-time data. Participants represented all 50 U.S. states and 147 (23%) resided in California (Fig 1). The baseline characteristics of the study population are presented in Table 1. Those with an average screen-time above the population median tended to be younger, female, Black, Hispanic, or “other” race/ethnicity, and have a higher PHQ-9 depression score. A sensitivity analyses restricted to a subgroup with 0% missing screen data (n = 292) revealed similar results (data not shown). Within the selected 30-day windows, the app recorded screen-time for a median 29.9 (IQR 27.3 to 30.0) days, during which total screen-time was a median 38.4 (IQR 21.4 to 61.3) hours and average screen-time was a median 3.7 (IQR 2.2 to 5.5) minutes per hour. This average screen-time is equivalent to 1 hour and 29 minutes (IQR 53 minutes to 2 hours and 12 minutes) per day. The relative distribution of screen-time within participants and hourly average screen-time across the population are shown in Fig 2.
+
+## Results › Associations with Screen-Time
+
+Section ID: `s013`
+
+In pursuing the hypothesis-free approach to identify predictors of screen-time, crude analyses revealed that younger participants, females, blacks, Hispanics, those self-reporting as “other” race, those of lower socioeconomic status (less education and lower income), those without a past history of smoking, those with a higher PHQ-9 score (more depressed mood), and those without atrial fibrillation, hyperlipidemia, or hypertension exhibited a longer overall average screen-time (Fig 3). After multivariate adjustment, only younger participants, blacks, and those reported to be of an “other” race demonstrated statistically significantly longer average screen-times (Fig 3). For instance, an individual 10 years older in age, on average after multivariable adjustment, had an average overall screen-time that was lesser by 0.7 minutes/hour (95% confidence interval 0.5 to 0.8, p < 0.001).
+
+## Results › Screen-Time and Sleep
+
+Section ID: `s014`
+
+In the hypothesis-driven analyses in the subgroup who also completed the sleep survey (n = 136), decreased sleep quality, shorter sleep duration, lower sleep efficiency, and longer sleep onset latency were each significantly associated with greater overall average screen-time in unadjusted analyses (Fig 4). After adjustment for age, sex, race/ethnicity, and history of sleep apnea, a greater score on the PSQI sleep duration component (less sleep) and reduced sleep efficiency were each statistically significantly associated with longer average screen-time (Fig 4). There were 56 participants that both completed the PSQI sleep survey and had complete screen-time data (0% missing). After adjustment for age, sex, race/ethnicity, and sleep apnea, poor sleep (by PSQI total > 5) was statistically significantly associated with longer average screen-time during the reported sleeping period and during the hour after bedtime (Fig 5). Both decreased sleep efficiency and increased sleep onset latency were associated with longer average screen-time during the reported sleeping period, the hour of bedtime, and the hour after bedtime. Total sleep duration was not associated with average screen-time during the reported sleeping period or during any of the 3 hours near reported bedtime.
+
+## Discussion (1/7)
+
+Section ID: `s015`
+
+Participants' smartphone screen-time exposure was on average approximately 3.7 minutes per hour, centered as expected primarily during the daytime. Those who were younger, Black, and Other race/ethnicity had greater screen-time exposure. Longer average screen-time was associated with shorter duration of sleep and reduced sleep efficiency. Given that screen-time after self-reported sleeping hours and near an individual’s bedtime was associated with reduced sleep efficiency and greater sleep onset latency, the relationship between overall smartphone use and sleep may be driven by exposure near bedtime. Since the advent of the modern smartphone in 2007, the adoption and use of these devices has been rapid and widespread [13]. As of 2015, approximately 64% of all American adults owned a smartphone, including 85% of those aged 18 to 29 [1]. While the demographics of individuals that purchase smartphones has been studied, the frequency of use based upon an objective measure has not previously been described. We found that younger individuals on average have greater screen-time, in agreement with survey-based demographic and marketing research [1,13]. Our finding that African Americans and Hispanics exhibit longer screen-time is consistent with the fact that racial and ethnic minorities have fewer desktop and laptop computers at home and are more frequently dependent on their smartphone for internet access [1]. Of interest, neither income nor education was associated with average screen-time after multivariable adjustment, suggesting that something cultural aside from socio-economic status may be driving increased smartphone use in these populations.
+
+## Discussion (2/7)
+
+Section ID: `s016`
+
+While there has been concern for both the negative and positive impact of smartphones on depression [14,15], screen-time exposure was not associated with mood after multivariable adjustment. It is also noteworthy that unlike TV watching [16,17], smartphone screen-time was not associated with physical activity level or BMI. This may in part be due to the multi-functionality of smartphones, different modes of media consumption, or perhaps the use of smartphones during physical activities (i.e., running apps). Finally, despite the fact that searching for medical information is one of the most common activities carried out with smartphones [1], none of the medical conditions evaluated were associated with average screen-time.
+
+## Discussion (3/7)
+
+Section ID: `s017`
+
+In addition to how smartphones are changing modern life, the impact of screen exposure on sleep is a major concern. Poor sleep has been shown to decrease performance at school and work, is associated with depressed mood, and is established as a risk factor for obesity, cardiovascular disease, stroke, and death [4,18,19]. Smartphones are often nearby at night, and 68% of owners store their phone on a bedside table while they sleep [20]. Prior studies regarding watching television, conventional computer use, and video-games have demonstrated that use at nighttime and particularly in the bedroom is associated with poor sleep and insomnia [2,7]. Exposure to blue light from such backlit screens suppresses production of melatonin, thereby delaying sleep onset and reducing sleep duration and quality [21]. A recent randomized cross-over trail found hospitalized patients took longer to fall asleep and had reduced quality of sleep after reading a backlit eReader compared to a paper book before bedtime [22]. However, this and other experimental studies may not generalize to typical at-home screen exposure and experiences with eReaders may not extrapolate to smartphone use. At-home screen-time obtained by self-report has been associated with poor sleep [23], but a study that used an app to measure smartphone screen-time in a small group of Taiwanese university students found that participants underestimated their screen-time by approximately 9 hours per week (equivalent to an average of 3.2 minutes/hour) [24].
+
+## Discussion (4/7)
+
+Section ID: `s018`
+
+Our objectively measured screen-time was associated with reduced quality of sleep. That increased screen-time in the hour of and after bedtime, but not the hour before, was associated with greater sleep onset latency agrees with the notion that screen use just before attempting to fall asleep may be particularly problematic.
+
+## Discussion (5/7)
+
+Section ID: `s019`
+
+This study has several important limitations. First, we analyzed a self-selected group of participants that elected to enroll in the Health eHeart Study and download the Ginger.io app, which may not be representative of the general population. Compared to the U.S. census, the cohort is better educated, wealthier, and consists of a greater proportion of whites and females [25,26]. The relative older age of our cohort may be surprising in a study requiring smartphone ownership. However, as demonstrated by the standard deviations in age, the cohort generally represented those in their early 30s to those in their mid 60s. This likely demonstrates the age groups most representative not only of smartphone ownership, but also those most willing, interested, and able to engage with an internet-based research study. On the other hand, we could only record screen-time on Android phones, owners of which tend to have lower socio-economic status compared to iPhone owners [27,28]. Similarly, analyses on screen-time and sleep were limited to a subset who had both types of data available, and analyses on screen-time near bedtime were in a further subset with no missing screen-time data, both of which are susceptible to selection bias. Demographic, medical, and sleep information were obtained by self-report, although well-validated standardized scales (PSQI, PHQ-9, IPAQ) were used. In addition, self-report of medical conditions within the Health eHeart Study has previously proven to exhibit high accuracy [29]. App-recorded screen-time is subject to some measurement error.
+
+## Discussion (6/7)
+
+Section ID: `s020`
+
+Screen-time when the app was actively turned off or the phone was in airplane mode was not captured, there could be multiple users of a single smartphone, or the screen could be on while a participant was not aware (such as when the screen is on while in a pocket). We also focused specifically on smartphone screen-time exposure and did not have information on the use of other back-lit devices (TV, computer, tablets). We analyzed 30-day windows with the least amount of missing screen data in an attempt to maximize the accuracy of the screen-time measure, but this could also have induced bias. Still, incomplete capture of smartphone screen exposure, and the absence of data on exposure to other types of screens, should only decrease sensitivity for associations with other participant characteristics. Finally, in regards to the analyses related to screen-time and sleep; although screen-time was collected prospectively and compared to sleep characteristics at baseline, we cannot exclude “effect-cause”—poor sleep could lead to more screen-time. Our study also has some notable strengths. This is the first time smartphone screen-time exposure has been recorded prospectively and compared to demographic and medical information. Screen-time was measured unobtrusively during “at home” use over a 30 day period and thus is more comparable to every-day long term use than prior experimental studies. Furthermore, since enrollment and consent in the Health eHeart study is performed remotely, the cohort is not limited to a particular geographic location or clinical population.
+
+## Discussion (7/7)
+
+Section ID: `s021`
+
+Our findings suggest that smartphone screen-time is an important exposure associated with worse sleep. Since poor sleep has important health consequences, further investigation to determine the causal relationship between smartphone use and sleep is necessary. This study took advantage of an app to measure smartphone screen-time, but sleep habits were measured once via a survey. Future work may benefit from using an app to collect data on nightly sleep quality. A measure of overall screen-time from multiple devices would also be helpful in this regard. Since certain activities may be more stimulating (e.g. thumbing through Facebook posts), future work might explore how screen-time, smartphone activities, and sleep interact. Ultimately, a deeper understanding of the situational and cultural factors driving smartphone use will be needed to guide studies on interventions aimed at reducing screen-time to improve sleep.
+
+## Conclusions
+
+Section ID: `s022`
+
+Our findings demonstrate that we spend a substantial portion of our time looking at our smartphones. Screen-time differs across age, race, and ethnicity and may be culturally driven by different norms or other environmental determinants. Screen-time exposure varies throughout the day, with most exposure occurring during the day, but some individuals have peaks of use during the night. Exposure to a smartphone screen, particularly around bedtime, is associated with a lower quality of sleep.
