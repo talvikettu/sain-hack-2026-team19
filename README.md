@@ -1,11 +1,13 @@
 # Sain Hackathon — Case 4: Expert as a Playlist
 
-This branch (`dinoden`) contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
+This branch (`frontend`) contains the web client, FastAPI backend, expert prompts, a scientific-article preprocessing pipeline, a RAG agent, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
 
 The application answers sleep-related questions through three fictional experts: a clinical sleep specialist (`clinician`), an experimental biohacker (`biohacker`), and a common-sense nutritionist (`nutritionist`). Answers must rely on the organizer-provided articles and include original article/section references.
 
 ## Start here
 
+- **Run or build the frontend:** [Frontend guide (RU)](web/README.md).
+- **Configure the HTTP backend:** [Backend guide](docs/BACKEND.md).
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
 - **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
 - **Run the agent on example questions:** [Agent guide](rag_agent/README.md).
@@ -123,7 +125,7 @@ These checks do not mean that every answer is correct. The manual review found s
 
 ## Integration and hosting limits
 
-This branch provides Python components and a CLI, **not a deployed HTTP backend, frontend, or `/run` endpoint**. Backend integration must handle authentication, expert IDs from the frontend, conversation persistence, shared rate limits, and the organizer evaluation contract.
+This branch includes a FastAPI backend with `/run`, `/experts`, `/chat`, and `/source/{article_id}/{section_id}`, plus a web frontend in `web/`. The committed `web/dist/` build is served by FastAPI at `/`; rebuild it after client changes and restart the backend. See the frontend and backend guides above for configuration and current session/user limitations. Deployment is not performed by creating this branch.
 
 The organizer backend environment has Python 3.11, 512 MB RAM, one CPU core, no GPU, and outbound access restricted to the hackathon API and LLM proxy. `/tmp` is limited to 256 MB and is not persistent across deployments. Rebuild or restore the index after deployment. The shared chat allowance is 30 requests/minute and 300,000 tokens/day; the CLI's local token budget does not account for other team members' usage.
 
