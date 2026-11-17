@@ -30,6 +30,9 @@ test('server, non-JSON, network and timeout failures become readable errors', as
     globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
     await assert.rejects(request('/chat'), /Нет соединения/);
     globalThis.fetch = async (_path, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
-    await assert.rejects(request('/chat', { timeout: 5 }), /Время ожидания истекло/);
+    await assert.rejects(request('/chat', { method: 'POST', timeout: 5 }), /Время ожидания истекло/);
+    await assert.rejects(request('/experts', { timeout: 5 }), /Сервер не ответил вовремя/);
+    globalThis.fetch = async () => Response.json({ detail: 'Upstream connection refused' }, { status: 502 });
+    await assert.rejects(request('/experts'), /Нет подключения к backend/);
   } finally { globalThis.fetch = original; }
 });

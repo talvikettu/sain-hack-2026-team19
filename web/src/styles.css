@@ -4,8 +4,8 @@ body { margin: 0; }
 button, textarea { font: inherit; }
 button, a, textarea { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; border: 0; color: inherit; }
-button:disabled { cursor: wait; opacity: .45; }
-button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px solid #d6fc37; outline-offset: 4px; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+button:focus-visible, a:focus-visible { outline: 2px solid #d6fc37; outline-offset: 4px; }
 [hidden] { display: none !important; }
 .shell { width: min(100%, 480px); margin: auto; padding: 24px 16px 22px; min-height: 100dvh; }
 .selection-header { display: flex; justify-content: space-between; align-items: center; margin: 6px 4px 20px; }
@@ -56,6 +56,7 @@ h1 { margin: 0 6px 8px; font-size: 30px; font-weight: 500; letter-spacing: -.7px
 .suggestions { display: grid; gap: 7px; margin-bottom: 12px; }
 .suggestion { text-align: left; background: #20201e; color: #c4c4ba; padding: 11px 14px; border-radius: 22px; font-size: 12px; }
 #composer { display: flex; align-items: flex-end; background: #252523; border-radius: 30px; padding: 6px 8px 6px 18px; gap: 8px; }
+#composer:focus-within { background: #333330; }
 textarea { background: none; border: 0; outline: none; color: #eeeee7; padding: 13px 0; flex: 1; min-width: 0; resize: vertical; max-height: 150px; font-size: 15px; line-height: 1.35; }
 textarea::placeholder { color: #aaa99f; }
 .send { border-radius: 50%; background: #d6fc37; color: #151c00; width: 44px; height: 44px; font-size: 28px; flex-shrink: 0; }

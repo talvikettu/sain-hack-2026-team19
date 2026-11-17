@@ -35,7 +35,6 @@ function renderExperts() {
     card.append(heading, el('p', 'description', p.description));
     const bottom = el('div', 'card-bottom');
     const button = el('button', 'select-button', 'Выбрать →');
-    button.disabled = !available.some(e => e.expert_id === id);
     button.setAttribute('aria-label', `Выбрать эксперта: ${p.name}`);
     button.addEventListener('click', () => openChat(id));
     bottom.append(el('span', 'card-note', p.note), button);
@@ -68,7 +67,9 @@ function openChat(id) {
   $('chat-title').textContent = profile(id).name;
   $('back').textContent = profile(id).symbol;
   $('question').value = chatState().draft;
-  $('chat-error').hidden = true;
+  const connected = available.some(e => e.expert_id === id);
+  $('chat-error').textContent = connected ? '' : 'Нет подключения к backend. Интерфейс доступен для просмотра, но для ответов запустите сервер на порту 8000. После запуска можно отправить вопрос.';
+  $('chat-error').hidden = connected;
   renderMessages();
   $('question').focus();
 }
