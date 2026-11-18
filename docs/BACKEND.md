@@ -32,6 +32,10 @@ Do not put the token or key values into the repository, logs, or chat.
 | `POST /chat` | one interactive client question: `{expert_id, message, session_id?, user_id?}` |
 | `GET /source/{article_id}/{section_id}` | real article/section text for the source card |
 
+`/chat` returns clean prose in `text` and source-card metadata in `citations`.
+Display the sources separately from the message. Inline citation IDs remain
+in the `/run` response for organizer evaluation.
+
 `POST /run` returns exactly:
 
 ```json
@@ -65,12 +69,17 @@ every request.
 Only complete runs are cached. If any request used a fallback answer, hit the
 deadline or exhausted the local budget, the result is returned but not stored.
 
-For each three-expert `group_id`, the first expert answers with the full
-evidence set. If that answer is not a refusal, the other two experts receive
-only the sections in the shared citation set. A refusal keeps the full evidence
-for all three experts, so each can independently confirm the boundary. The
-narrowing is best-effort: any cache mismatch leaves the original evidence in
-place.
+Before generation, /run searches the original question and its recognized topics.
+It collects up to 40 candidates per main query and reranks the first 20.
+Supplementary searches can widen coverage for sleep timing and evening light.
+The sleep-hygiene query for sleep schedules retrieves up to 10 candidates.
+The reranker favors relevant sections containing findings or conclusions and
+distinguishes those sections from abstracts that only describe the methods.
+For each `group_id`, it selects a common section and passes it to all experts.
+The same section is available for a degraded response if generation fails.
+A degraded response identifies the section as a reading suggestion and does not
+claim a scientific conclusion. If retrieval finds no section, the format's
+required citation cannot be supplied and the run reports an error.
 
 Cached results live only in the process; a stand restart starts with an empty
 cache. `RUN_CACHE_VERSION` in `main.py` must be bumped when prompts or answer
@@ -88,7 +97,7 @@ python -m unittest discover -s tests
 `tests/test_backend_contract.py` covers the exact `/run` response shape,
 identical citations inside every three-expert group, fallback answers, cache
 hits, non-caching of partial runs, the single process-wide client, and
-evidence narrowing / refusal behavior. The tests use synthetic data, plus the
+evidence selection before generation. The tests use synthetic data, plus the
 dev dataset already present in the repository when it is available.
 
 An end-to-end contract check can replace the LLM with a local deterministic

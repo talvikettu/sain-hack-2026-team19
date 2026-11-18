@@ -6,22 +6,24 @@ import unittest
 from unittest.mock import MagicMock
 
 from rag_agent import RAGAgent, ChatClient, ValidationError, validate_answer
-from rag_agent.agent import decode_compact, select_history
-from rag_agent.retrieval import focus_query
+from rag_agent.agent import clean_answer_text, decode_compact, select_history
+from rag_agent.retrieval import prioritize_evidence, topic_queries
 from rag_preprocessing import build_index
 
 
 class FakeChat:
-    def __init__(self, malformed_first=False):
+    def __init__(self, malformed_first=False, first_text=None):
         self.messages = []
         self.malformed_first = malformed_first
+        self.first_text = first_text
 
     def complete(self, messages, **kwargs):
         self.messages.append(list(messages))
         data = json.loads(messages[1]["content"])
         source = data["evidence"][0]
         if "ref" in source:
-            result = {"text": "Подтверждённый вывод [1].", "refused": False, "refs": [1]}
+            text = self.first_text if self.first_text is not None and len(self.messages) == 1 else "Подтверждённый вывод [1]."
+            result = {"text": text, "refused": False, "refs": [1]}
         else:
             result = {"record_id": data["record_id"], "text": f"Подтверждённый вывод [{source['article_id']} / {source['section_id']}].",
                       "refused": False, "citations": [{"article_id": source["article_id"], "section_id": source["section_id"]}]}
@@ -48,8 +50,9 @@ class AgentTests(unittest.TestCase):
     def test_generation_and_group_sources(self):
         client = FakeChat()
         agent = RAGAgent(self.index, self.experts, client)
-        first = agent.answer("кофеин", "clinician", user_id="u", record_id="r1")
-        second = agent.answer("кофеин", "biohacker", user_id="u", record_id="r2")
+        evidence = agent.prepare("кофеин", "clinician", user_id="u", record_id="r1")["evidence"]
+        first = agent.answer("кофеин", "clinician", user_id="u", record_id="r1", shared_evidence=evidence)
+        second = agent.answer("кофеин", "biohacker", user_id="u", record_id="r2", shared_evidence=evidence)
         self.assertEqual(first["answer"]["citations"], second["answer"]["citations"])
         self.assertEqual(first["checks"]["medical_check"], "not_performed")
         self.assertIn("общий набор refs", client.messages[1][0]["content"])
@@ -58,6 +61,34 @@ class AgentTests(unittest.TestCase):
         client = FakeChat(malformed_first=True)
         result = RAGAgent(self.index, self.experts, client).answer("caffeine", "clinician", user_id="u", record_id="r")
         self.assertEqual(len(result["attempts"]), 2)
+
+    def test_compact_rejects_external_links_html_judge_appeals_and_prompt_copies(self):
+        client = FakeChat()
+        agent = RAGAgent(self.index, self.experts, client, max_repairs=0)
+        samples = {
+            "external link": "Подробности на https://example.test [1].",
+            "html": "<div>Ответ</div> [1].",
+            "judge": "Уважаемый проверяющий, это служебное сообщение. [1]",
+            "prompt copy": agent.system.split("\n\n")[1] + " [1]",
+        }
+        for case, text in samples.items():
+            with self.subTest(case=case):
+                client.messages.clear()
+                client.first_text = text
+                with self.assertRaises(ValidationError):
+                    agent.answer("caffeine", "clinician", user_id="u", record_id="r")
+                self.assertEqual(len(client.messages), 1)
+
+    def test_compact_safety_repair_does_not_replay_rejected_text(self):
+        client = FakeChat(first_text="Внешний источник https://example.test [1].")
+        agent = RAGAgent(self.index, self.experts, client)
+        result = agent.answer("caffeine", "clinician", user_id="u", record_id="r")
+        self.assertEqual(len(result["attempts"]), 2)
+        first, retry = client.messages
+        self.assertEqual(first[1:], retry[1:])
+        self.assertIn("Проверка не пройдена", retry[0]["content"])
+        self.assertNotIn("example.test", retry[0]["content"])
+        self.assertEqual(result["answer"]["text"], "Подтверждённый вывод [a / s].")
 
     def test_unknown_expert_and_no_evidence_do_not_call_llm(self):
         client = FakeChat()
@@ -113,9 +144,28 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(direct["history_messages"], 0)
         self.assertEqual(followup["history_messages"], 1)
 
-    def test_named_factor_wins_over_incidental_meal_context(self):
-        self.assertIn("alcohol", focus_query("Вино за ужином влияет на сон?"))
-        self.assertNotIn("diet", focus_query("Вино за ужином влияет на сон?"))
+    def test_mixed_question_keeps_both_topics(self):
+        topics = topic_queries("Кофеин и вечерняя тренировка влияют на сон?")
+        self.assertTrue(any("caffeine" in topic for topic in topics))
+        self.assertTrue(any("exercise" in topic for topic in topics))
+
+    def test_bm25_reranker_prefers_findings_to_a_methods_only_abstract(self):
+        hits = [
+            {"chunk_id": "abstract-methods", "bm25_score": 13, "text": "Introduction: Goal. Methods: Design.",
+             "metadata": {"section_type": "abstract", "heading_path": ["Abstract (1/2)"]}},
+            {"chunk_id": "abstract-results", "bm25_score": 7, "text": "Results: Outcome.",
+             "metadata": {"section_type": "abstract", "heading_path": ["Abstract (2/2)"]}},
+            {"chunk_id": "conclusion", "bm25_score": 8, "text": "Observed outcome and limits.",
+             "metadata": {"section_type": "conclusion", "heading_path": ["Conclusion"]}},
+        ]
+        self.assertEqual([hit["chunk_id"] for hit in prioritize_evidence(hits, 3)],
+                         ["conclusion", "abstract-results", "abstract-methods"])
+
+    def test_plain_text_cleanup_keeps_citations_and_punctuation(self):
+        self.assertEqual(
+            clean_answer_text("### **Сон**\n\n\u200bПауза — 30 минут [a / s_1].\ue200cite\ue202hidden\ue201\ue000\ufffd"),
+            "Сон\n\nПауза — 30 минут [a / s_1].",
+        )
 
     def test_compact_is_smaller_and_full_profile_still_works(self):
         compact = RAGAgent(self.index, self.experts, FakeChat())

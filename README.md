@@ -9,8 +9,9 @@ The application answers sleep-related questions through three fictional experts:
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
 - **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
 - **Run the agent on example questions:** [Agent guide](rag_agent/README.md).
-- **Read the latest generated answers:** [First 10 questions — compact run](reports/rag_compact_first10/report.md).
-- **Review accuracy, latency, and token usage:** [Latest evaluation](reports/rag_compact_first10/EVALUATION.md).
+- **Check retrieval coverage:** [Current compact retrieval results](#current-compact-retrieval-results).
+- **Read the published sample answers:** [First 10 questions — compact run](reports/rag_compact_first10/report.md).
+- **Review the published sample's accuracy, latency, and token usage:** [First-ten evaluation](reports/rag_compact_first10/EVALUATION.md).
 - **Understand the token optimizations:** [Optimization notes](docs/RAG_TOKEN_OPTIMIZATION_RU.md).
 
 This navigation page is in English. Most detailed project documents and example conversations are currently in Russian.
@@ -25,7 +26,7 @@ This navigation page is in English. Most detailed project documents and example 
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
 | [`data/`](data/) | Organizer dev materials already present in this branch: articles, expert descriptions, example requests, history, API schemas, and local evaluation references. |
 | [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |
-| [`reports/rag_compact_first10/`](reports/rag_compact_first10/) | Explicitly published snapshot of the latest real 10-question run: answers, usage, timing, and evaluation. |
+| [`reports/rag_compact_first10/`](reports/rag_compact_first10/) | Published snapshot of an earlier real 10-question compact run: answers, usage, timing, and evaluation. |
 | [`output/pdf/`](output/pdf/) | Russian and English technical-constraints PDFs. |
 | `team19/` | Local organizer kit, including credentials and deployment templates. Ignored by Git; never commit this directory or secret values copied from it. |
 | `tmp/` | Generated indexes, previews, temporary scripts, and local run results. Ignored by Git. |
@@ -72,7 +73,29 @@ Question + expert_id
     → answer with article_id / section_id citations
 ```
 
-The preprocessing package supports optional remote embeddings and hybrid retrieval. The current agent demo uses **BM25**, not live embeddings. Embedding access must be confirmed and explicitly configured; no model weights are downloaded.
+The preprocessing package supports optional remote embeddings and hybrid retrieval. The current compact profile uses **local SQLite/BM25**. It combines the original question with topic-specific searches and preserves the options and constraints in comparisons where recognized. The reranker favors relevant sections with findings or conclusions. Embedding access must be confirmed and explicitly configured; no model weights are downloaded.
+
+## Current compact retrieval results
+
+The offline check processed **60 dev requests across 20 groups**. It found **183 of 183 allowed request–article pairs** in the candidate pool, with complete coverage for **60 of 60 requests**. It selected an allowed source for **60 of 60 requests**. These are pairs from the organizer's dev reference, not 183 distinct articles. The reference is used only to score retrieval after the search.
+
+| Metric | Before the wider search | Current |
+|---|---:|---:|
+| Allowed request–article pairs found | 153/183 | **183/183** |
+| Requests with every allowed article in the candidate pool | 42/60 | **60/60** |
+| Requests with an allowed article selected for the prompt | 60/60 | **60/60** |
+
+The wider search collects up to **40 fragments per main query** and reranks the first **20**. Supplementary searches expand coverage for sleep timing and evening light. A focused sleep-hygiene query adds up to **10** candidates for schedule questions. The selected section stayed the same on all 60 dev requests after widening the search.
+
+The **`/run`** path sends **one shared section** to the experts in a group and returns the organizer's citation fields. **`/chat`** can use up to three fragments within the compact context budget and returns source-card metadata separately from the displayed text. Compact output checks cover citation structure, external links, HTML, direct appeals to the evaluator, and long verbatim copies of system instructions. These checks do not measure medical correctness or resistance to all prompt injections.
+
+Reproduce the retrieval check without credentials or model calls:
+
+```powershell
+python scripts/evaluate_retrieval.py --output tmp/retrieval_evaluation
+```
+
+The script saves a local Markdown table and JSON with allowed, found, and missing articles for each request, plus the selected section. These results measure dev retrieval coverage. Generation quality and performance on the closed organizer dataset remain unmeasured by this check.
 
 ## Quick start
 
@@ -110,7 +133,7 @@ python -m rag_agent --limit 10 --profile compact --token-budget 60000 --output t
 
 This command consumes the team's shared LLM quota. Select a new output directory: the CLI refuses to overwrite an existing run. Results are checkpointed after each question as `report.md`, `run.json`, and `answers.json`. On the first error, the run stops and preserves partial results.
 
-## Latest measured run
+## Published generation benchmark
 
 The committed [compact run snapshot](reports/rag_compact_first10/README.md) used the first 10 unchanged dev questions:
 
@@ -123,7 +146,7 @@ These checks do not mean that every answer is correct. The manual review found s
 
 ## Integration and hosting limits
 
-This branch provides Python components and a CLI, **not a deployed HTTP backend, frontend, or `/run` endpoint**. Backend integration must handle authentication, expert IDs from the frontend, conversation persistence, shared rate limits, and the organizer evaluation contract.
+This branch includes the FastAPI backend, `/run`, `/chat`, and the stand entrypoint. See the [backend guide](docs/BACKEND.md) for routes, deployment settings, and quota handling.
 
 The organizer backend environment has Python 3.11, 512 MB RAM, one CPU core, no GPU, and outbound access restricted to the hackathon API and LLM proxy. `/tmp` is limited to 256 MB and is not persistent across deployments. Rebuild or restore the index after deployment. The shared chat allowance is 30 requests/minute and 300,000 tokens/day; the CLI's local token budget does not account for other team members' usage.
 

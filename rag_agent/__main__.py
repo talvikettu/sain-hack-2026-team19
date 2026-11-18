@@ -21,7 +21,8 @@ def write_reports(directory, run):
     answers = [r["answer"] for r in run["results"] if "answer" in r]
     save("answers.json", json.dumps({"requests": answers}, ensure_ascii=False, indent=2))
     lines = ["# Пробный прогон RAG: первые запросы dev", "", "Локальный отчёт. Не публиковать данные и ответы в Git.",
-             "", f"LLM calls: {run['calls']}; total tokens: {run['total_tokens']}",
+             "", f"Profile: {run['profile']}; LLM calls: {run['calls']}; total tokens: {run['total_tokens']}",
+             "", f"Elapsed: {run.get('elapsed_seconds', 0)} s; index build: {run['index_build_seconds']} s",
              "", "Структура и источники проверены кодом. Медицинская проверка и оценка организаторов не выполнялись."]
     for i, result in enumerate(run["results"], 1):
         lines += ["", f"## {i}. {result['expert_id']}", "", "**Вопрос:** " + result["question"], ""]
@@ -30,13 +31,15 @@ def write_reports(directory, run):
             continue
         answer = result["answer"]
         tokens = sum(x["usage"]["total_tokens"] for x in result["attempts"])
-        lines += [answer["text"], "", f"Отказ: {answer['refused']}; токены: {tokens}; время: {result['seconds']} с.",
+        seconds = result["timing"]["total_seconds"]
+        lines += [answer["text"], "", f"Отказ: {answer['refused']}; токены: {tokens}; подготовка и ответ: {seconds} с.",
                   "", "Цитаты: " + ", ".join(c["article_id"] + "/" + c["section_id"] for c in answer["citations"]),
                   "", "Флаги ручной проверки: " + str(result["checks"]["advisory_flags"])]
     save("report.md", "\n".join(lines) + "\n")
 
 
 def main():
+    started = time.monotonic()
     parser = argparse.ArgumentParser(description="Real LLM demo; consumes organizer quota")
     parser.add_argument("--dataset", default="data/dataset.json")
     parser.add_argument("--limit", type=int, default=10)
@@ -55,17 +58,27 @@ def main():
     data = json.loads(Path(args.dataset).read_text(encoding="utf-8-sig"))
     dataset = data.get("dataset", data)
     deadline = time.monotonic() + args.timeout
-    client = None if args.dry_run else ChatClient.from_env(max_calls=args.limit + 2, token_budget=args.token_budget)
+    client = None if args.dry_run else ChatClient.from_env(max_calls=2 * args.limit, token_budget=args.token_budget)
     index = output / "index.sqlite3"
     index_report = build_index(dataset, index, deadline=deadline)
     agent = RAGAgent(index, dataset["experts"], client,
                      history=[] if args.no_history else dataset["chat_history"], prompt_profile=args.profile)
+    records = dataset["requests"][:args.limit]
+    groups = {}
+    for record in records:
+        if record.get("group_id") is not None:
+            groups.setdefault(record["group_id"], []).append(record)
+    shared = {
+        group_id: agent.prepare_group(members, deadline=deadline)
+        for group_id, members in groups.items() if len(members) > 1
+    }
     if args.dry_run:
         requests = []
-        for record in dataset["requests"][:args.limit]:
+        for record in records:
             prepared = agent.prepare(record["utterance"]["text"], record["expert_id"],
                                      user_id=record["user_id"], record_id=record["record_id"],
-                                     at=record["utterance"]["at"], deadline=deadline)
+                                     at=record["utterance"]["at"], deadline=deadline,
+                                     shared_evidence=shared.get(record.get("group_id")))
             requests.append({"record_id": record["record_id"], "expert_id": record["expert_id"],
                              "history_messages": prepared["history_messages"],
                              "evidence_sections": len(prepared["allowed"]), "messages": prepared["messages"]})
@@ -80,16 +93,18 @@ def main():
            "index_build_seconds": index_report["build_seconds"],
            "limit": args.limit, "calls": 0, "total_tokens": 0, "results": []}
     write_reports(output, run)
-    for number, record in enumerate(dataset["requests"][:args.limit], 1):
+    for number, record in enumerate(records, 1):
         try:
             result = agent.answer(record["utterance"]["text"], record["expert_id"],
                                   user_id=record["user_id"], record_id=record["record_id"],
-                                  at=record["utterance"]["at"], deadline=deadline)
+                                  at=record["utterance"]["at"], deadline=deadline,
+                                  shared_evidence=shared.get(record.get("group_id")))
         except (ValueError, RuntimeError, TimeoutError, OSError) as error:
             result = {"record_id": record["record_id"], "expert_id": record["expert_id"],
                       "question": record["utterance"]["text"], "error_type": type(error).__name__}
         run["results"].append(result)
         run["calls"], run["total_tokens"] = client.calls, client.total_tokens
+        run["elapsed_seconds"] = round(time.monotonic() - started, 3)
         write_reports(output, run)
         status = "ok" if "answer" in result else result["error_type"]
         print(f"{number}/{args.limit}: {status}; calls={client.calls}; tokens={client.total_tokens}", flush=True)

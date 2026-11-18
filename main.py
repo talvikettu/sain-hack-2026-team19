@@ -48,7 +48,7 @@ LLM_TIMEOUT_SECONDS = 120
 LLM_MAX_CALLS = 150
 LLM_TOKEN_BUDGET = 260_000
 LLM_MIN_INTERVAL_SECONDS = 2.1
-RUN_CACHE_VERSION = "1"
+RUN_CACHE_VERSION = "6"
 RUN_CACHE_MAX_ENTRIES = 4
 MAX_DATASET_BYTES = 32 * 1024 * 1024
 
@@ -255,28 +255,16 @@ def _should_skip_remaining(exc: BaseException) -> bool:
     return ("budget exhausted" in message or "HTTP 429" in message or "unavailable" in message)
 
 
-def _first_section(dataset: dict[str, Any]) -> list[dict[str, str]]:
-    for article in dataset.get("articles", []):
-        for section in article.get("sections", []):
-            return [{"article_id": article["article_id"], "section_id": section["section_id"]}]
-    raise ValueError("Dataset has no article sections")
-
-
-def _fallback_answer(
-    dataset: dict[str, Any],
-    request: dict[str, Any],
-    preferred: list[dict[str, str]] | None = None,
-) -> dict[str, Any]:
-    citations = preferred or _first_section(dataset)
-    refs = " ".join(f"[{item['article_id']} / {item['section_id']}]" for item in citations)
+def _fallback_answer(request: dict[str, Any], evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    pairs = dict.fromkeys((block["article_id"], block["section_id"]) for block in evidence)
+    if not pairs:
+        raise ValueError("Cannot produce a schema-valid fallback without retrieved sources")
+    refs = " ".join(f"[{article_id} / {section_id}]" for article_id, section_id in pairs)
     return {
         "record_id": request["record_id"],
-        "text": (
-            "По этому вопросу у меня нет подтверждённого вывода в базе. "
-            "Не стоит действовать наугад; обсудите это со специалистом. " + refs
-        ),
-        "refused": True,
-        "citations": [dict(item) for item in citations],
+        "text": "Сейчас не удалось сформировать подтверждённый ответ. По теме найдены разделы: " + refs,
+        "refused": False,
+        "citations": [{"article_id": a, "section_id": s} for a, s in pairs],
     }
 
 
@@ -285,6 +273,7 @@ def _answer_with_retry(
     request: dict[str, Any],
     deadline: float,
     context: RunContext,
+    shared_evidence: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
     if context.skip_llm:
         raise RuntimeError("LLM skipped")
@@ -300,6 +289,7 @@ def _answer_with_retry(
                 record_id=request["record_id"],
                 at=request["utterance"]["at"],
                 deadline=deadline,
+                shared_evidence=shared_evidence,
             )
         except (RuntimeError, TimeoutError) as exc:
             if attempt == attempts - 1 or not _retryable(exc):
@@ -312,83 +302,6 @@ def _answer_with_retry(
     raise AssertionError("unreachable")
 
 
-def _restrict_evidence_to_answer(
-    agent: Any,
-    request: dict[str, Any],
-    answer: dict[str, Any],
-    deadline: float,
-) -> None:
-    """Keep only the fixed citation sections for the next experts.
-
-    Best-effort by design: any mismatch leaves the full evidence in place, so
-    this optimization cannot break a run. A refusal keeps full evidence so the
-    other experts can independently confirm the boundary.
-    """
-    if answer.get("refused"):
-        return
-    prepare = getattr(agent, "prepare", None)
-    citation_cache = getattr(agent, "citation_cache", None)
-    evidence_cache = getattr(agent, "evidence_cache", None)
-    if (not callable(prepare) or not isinstance(citation_cache, dict)
-            or not isinstance(evidence_cache, dict)):
-        return
-    try:
-        prepared = prepare(
-            request["utterance"]["text"],
-            request["expert_id"],
-            user_id=request["user_id"],
-            record_id=request["record_id"],
-            at=request["utterance"]["at"],
-            deadline=deadline,
-        )
-        key = prepared["cache_key"]
-        required = citation_cache.get(key)
-        blocks = evidence_cache.get(key)
-        if not required or not blocks:
-            return
-        filtered = [
-            block for block in blocks
-            if (block["article_id"], block["section_id"]) in required
-        ]
-        if filtered:
-            evidence_cache[key] = filtered
-    except Exception:
-        return
-
-
-def _answer_group(
-    agent: RAGAgent,
-    dataset: dict[str, Any],
-    members: list[dict[str, Any]],
-    deadline: float,
-    context: RunContext,
-) -> dict[str, dict[str, Any]]:
-    answers: dict[str, dict[str, Any]] = {}
-    successful: list[dict[str, Any]] = []
-    ordered = sorted(members, key=lambda item: EXPERT_ORDER.get(item["expert_id"], 99))
-    for request in ordered:
-        if context.skip_llm or time.monotonic() >= deadline:
-            continue
-        try:
-            result = _answer_with_retry(agent, request, deadline, context)
-            answers[request["record_id"]] = result["answer"]
-            if not successful:
-                _restrict_evidence_to_answer(agent, request, result["answer"], deadline)
-            successful.append(result["answer"])
-        except Exception as exc:
-            logger.warning("record failed: %s", type(exc).__name__)
-            if _should_skip_remaining(exc):
-                context.skip_llm = True
-
-    # The case requires identical citations for all three experts of a triple.
-    preferred = successful[0]["citations"] if successful else None
-    for request in members:
-        if request["record_id"] not in answers:
-            answers[request["record_id"]] = _fallback_answer(dataset, request, preferred)
-            context.fallbacks += 1
-    return answers
-
-
 def _answer_requests(
     agent: RAGAgent,
     dataset: dict[str, Any],
@@ -396,36 +309,45 @@ def _answer_requests(
     context: RunContext,
 ) -> dict[str, list[dict[str, Any]]]:
     requests = dataset.get("requests") or []
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    group_order: list[str] = []
-    singles: list[dict[str, Any]] = []
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for request in requests:
         group_id = request.get("group_id")
-        if group_id is None:
-            singles.append(request)
-        else:
-            if group_id not in grouped:
-                grouped[group_id] = []
-                group_order.append(group_id)
-            grouped[group_id].append(request)
+        key = ("group", group_id) if group_id is not None else ("record", request["record_id"])
+        grouped.setdefault(key, []).append(request)
 
+    # Keep retrieval available even if generation uses the remaining deadline.
+    prepared = [(members, agent.prepare_group(members, deadline=deadline)) for members in grouped.values()]
     answers: dict[str, dict[str, Any]] = {}
-    for group_id in group_order:
-        answers.update(_answer_group(agent, dataset, grouped[group_id], deadline, context))
-    for request in singles:
-        if context.skip_llm or time.monotonic() >= deadline:
-            answers[request["record_id"]] = _fallback_answer(dataset, request)
-            context.fallbacks += 1
-            continue
-        try:
-            answers[request["record_id"]] = _answer_with_retry(agent, request, deadline, context)["answer"]
-        except Exception as exc:
-            logger.warning("record failed: %s", type(exc).__name__)
-            if _should_skip_remaining(exc):
-                context.skip_llm = True
-            answers[request["record_id"]] = _fallback_answer(dataset, request)
+    for members, evidence in prepared:
+        ordered = sorted(members, key=lambda item: EXPERT_ORDER.get(item["expert_id"], 99))
+        for request in ordered:
+            record_id = request["record_id"]
+            if not context.skip_llm and time.monotonic() < deadline:
+                try:
+                    answers[record_id] = _answer_with_retry(agent, request, deadline, context, evidence)["answer"]
+                    continue
+                except Exception as exc:
+                    logger.warning("record failed: %s", type(exc).__name__)
+                    if _should_skip_remaining(exc):
+                        context.skip_llm = True
+            answers[record_id] = _fallback_answer(request, evidence)
             context.fallbacks += 1
     return {"requests": [answers[request["record_id"]] for request in requests]}
+
+
+def _chat_answer_text(text: str, citations: list[dict[str, str]]) -> str:
+    """Remove validated citation markers from prose shown and read aloud in chat."""
+    pairs = {(item["article_id"], item["section_id"]) for item in citations}
+
+    def hide_marker(match: re.Match[str]) -> str:
+        return " " if match.groups() in pairs else match[0]
+
+    without_markers = re.sub(r"\[([\w.:-]+)\s*/\s*([\w.:-]+)\]", hide_marker, text)
+    lines = []
+    for line in without_markers.split("\n"):
+        line = re.sub(r"[ \t]+(?=[,.;:!?…])", "", line)
+        lines.append(re.sub(r"[ \t]{2,}", " ", line).strip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def _enrich_citations(runtime: Runtime, citations: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -579,11 +501,14 @@ def chat(request: ChatRequest) -> dict[str, Any]:
                 at=at,
                 deadline=time.monotonic() + CHAT_BUDGET_SECONDS,
             )
+            answer = result["answer"]
+            text = _chat_answer_text(answer["text"], answer["citations"])
+            if not text:
+                raise ValueError("Chat answer consists only of citations")
         except Exception as exc:
             logger.warning("chat failed: %s", type(exc).__name__)
             raise HTTPException(status_code=503, detail="Эксперт временно недоступен. Попробуйте ещё раз.") from None
 
-        answer = result["answer"]
         answered_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         session.extend([
             {
@@ -598,13 +523,13 @@ def chat(request: ChatRequest) -> dict[str, Any]:
                 "user_id": user_id,
                 "role": "agent",
                 "at": answered_at,
-                "text": answer["text"],
+                "text": text,
             },
         ])
         return {
             "session_id": session_id,
             "expert_id": request.expert_id,
-            "text": answer["text"],
+            "text": text,
             "refused": answer["refused"],
             "citations": _enrich_citations(runtime, answer["citations"]),
         }

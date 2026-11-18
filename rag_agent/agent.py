@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 import re
 import time
+import unicodedata
 
-from rag_preprocessing import pack_context, search
-from .retrieval import focus_query, prioritize_evidence, references_history
+from rag_preprocessing import pack_context
+from .retrieval import merge_rankings, references_history, search_rankings
 
 PERSONA_FILES = {"clinician": "somnologist.md", "biohacker": "biohacker.md",
                  "nutritionist": "nutritionist.md"}
@@ -16,6 +17,22 @@ PERSONA_FILES = {"clinician": "somnologist.md", "biohacker": "biohacker.md",
 
 class ValidationError(ValueError):
     pass
+
+
+def clean_answer_text(text):
+    """Clean formatting artifacts in user-visible prose, preserving citations."""
+    text = unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = re.sub(r"\ue200(?:cite|filecite|navlist|image_group)\ue202[^\n\ue201]*\ue201", "", text)
+    text = "".join(
+        char for char in text
+        if char in "\n\t" or (char != "\ufffd" and unicodedata.category(char) not in {"Cc", "Cf", "Co", "Cs"})
+    )
+    text = re.sub(r"(?m)^\s*```(?:text|markdown)?[ \t]*$", "", text, flags=re.I)
+    text = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(\*\*|__)([^\n]+?)\1", r"\2", text)
+    text = re.sub(r"(?<!\w)\*([^*\n]+)\*(?!\w)", r"\1", text)
+    text = re.sub(r"(?<!`)`([^`\n]+)`(?!`)", r"\1", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def decode_compact(value, record_id, evidence):
@@ -105,6 +122,21 @@ def safety_flags(answer):
     return flags
 
 
+def validate_compact_text(text, system_prompt):
+    """Block selected unsafe output patterns before returning compact prose."""
+    normalized = " ".join(text.casefold().split())
+    outside_link = r"\b(?:https?://|www\.|javascript:|data:text/html\b)|\[[^\]\n]+\]\s*\("
+    html_tag = r"</?[a-z][a-z0-9:-]*(?:\s[^<>]*)?\s*/?>"
+    if re.search(outside_link + "|" + html_tag, text, re.I):
+        raise ValidationError("Use plain text and numbered evidence citations only")
+    if re.search(r"(?im)^\s*(?:уважаем\w*\s+)?(?:проверяющ\w+|судья|judge)\s*[,!:]", text):
+        raise ValidationError("Address the user only")
+    for paragraph in system_prompt.split("\n\n"):
+        protected = " ".join(paragraph.casefold().split())
+        if len(protected) >= 120 and protected in normalized:
+            raise ValidationError("Do not reproduce internal instructions")
+
+
 class RAGAgent:
     def __init__(self, index, experts, client, *, prompts_dir=None, history=None,
                  top_k=None, context_chars=None, max_repairs=1, prompt_profile="compact"):
@@ -122,9 +154,34 @@ class RAGAgent:
         self.top_k = top_k if top_k is not None else (3 if prompt_profile == "compact" else 5)
         self.context_chars = context_chars if context_chars is not None else (4500 if prompt_profile == "compact" else 12000)
         self.max_repairs = max_repairs
-        self.evidence_cache, self.citation_cache = {}, {}
+        self.evidence_cache = {}
 
-    def prepare(self, question, expert_id, *, user_id, record_id, at=None, deadline=None):
+    def _retrieve(self, question, deadline):
+        rankings = [ranking[:self.top_k] for ranking in search_rankings(self.index, question, deadline=deadline)]
+        return pack_context(self.index, merge_rankings(rankings, self.top_k), max_chars=self.context_chars)
+
+    def group_query(self, records):
+        """Combine the requests and relevant history for a shared search."""
+        questions = []
+        for record in records:
+            utterance = record["utterance"]
+            question = utterance["text"]
+            questions.append(question)
+            if references_history(question):
+                questions.extend(
+                    item["text"] for item in select_history(self.history, record["user_id"], utterance["at"])
+                    if item["role"] == "user"
+                )
+        return "\n".join(dict.fromkeys(questions))
+
+    def prepare_group(self, records, *, deadline=None):
+        """Select shared evidence before generating the first expert answer."""
+        # Pick a common anchor only after retrieving across the question's topics.
+        # Requiring multiple sources can force every expert to cite weak matches.
+        evidence = self._retrieve(self.group_query(records), deadline)
+        return evidence[:1]
+
+    def prepare(self, question, expert_id, *, user_id, record_id, at=None, deadline=None, shared_evidence=None):
         """Build an inspectable request without calling the model."""
         if expert_id not in PERSONA_FILES or expert_id not in self.experts:
             raise ValueError("Unknown expert_id")
@@ -143,18 +200,18 @@ class RAGAgent:
         if needs_history:
             retrieval_query += "\n" + "\n".join(m["text"] for m in history if m["role"] == "user")
         key = sha256(json.dumps([user_id, question, history], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-        if key not in self.evidence_cache:
-            if self.prompt_profile == "compact":
-                hits = search(self.index, focus_query(retrieval_query), top_k=20, deadline=deadline)
-                hits = prioritize_evidence(hits, self.top_k)
-            else:
-                hits = search(self.index, retrieval_query, top_k=self.top_k, deadline=deadline)
-            self.evidence_cache[key] = pack_context(self.index, hits, max_chars=self.context_chars)
-        evidence = self.evidence_cache[key]
+        if shared_evidence is None:
+            if key not in self.evidence_cache:
+                self.evidence_cache[key] = self._retrieve(retrieval_query, deadline)
+            evidence = self.evidence_cache[key]
+        else:
+            evidence = shared_evidence
         if not evidence:
             raise ValidationError("No evidence found; expand retrieval before calling the LLM")
         allowed = {(block["article_id"], block["section_id"]) for block in evidence}
-        required = self.citation_cache.get(key)
+        required = None
+        if shared_evidence is not None:
+            required = list(dict.fromkeys((block["article_id"], block["section_id"]) for block in evidence))
         expert = self.experts[expert_id]
         if self.prompt_profile == "compact":
             role = "\nРоль: " + expert["role"] + "\nСтиль: " + expert["speech_style"]
@@ -201,13 +258,13 @@ citations — непустой массив объектов {article_id,section
         return {"messages": messages, "evidence": evidence, "allowed": allowed,
                 "required": required, "cache_key": key, "history_messages": len(history)}
 
-    def answer(self, question, expert_id, *, user_id, record_id, at=None, deadline=None):
+    def answer(self, question, expert_id, *, user_id, record_id, at=None, deadline=None, shared_evidence=None):
         request_started = time.monotonic()
         prepared = self.prepare(question, expert_id, user_id=user_id, record_id=record_id,
-                                at=at, deadline=deadline)
+                                at=at, deadline=deadline, shared_evidence=shared_evidence)
         retrieval_seconds = time.monotonic() - request_started
         messages, evidence = prepared["messages"], prepared["evidence"]
-        allowed, required, key = prepared["allowed"], prepared["required"], prepared["cache_key"]
+        allowed, required = prepared["allowed"], prepared["required"]
         attempts, started = [], time.monotonic()
         validation_seconds = 0.0
         for attempt in range(self.max_repairs + 1):
@@ -224,10 +281,14 @@ citations — непустой массив объектов {article_id,section
                     raise ValidationError("Response must be a single valid JSON object") from None
                 if self.prompt_profile == "compact":
                     answer = decode_compact(answer, record_id, evidence)
+                if isinstance(answer, dict) and isinstance(answer.get("text"), str):
+                    answer["text"] = clean_answer_text(answer["text"])
                 validate_answer(answer, record_id, allowed, required)
+                if self.prompt_profile == "compact":
+                    validate_compact_text(answer["text"], self.system)
                 validation_seconds += time.monotonic() - validation_started
-                if key not in self.citation_cache:
-                    self.citation_cache[key] = [(c["article_id"], c["section_id"]) for c in answer["citations"]]
+                if required:
+                    answer["citations"] = [{"article_id": a, "section_id": s} for a, s in required]
                 return {"answer": answer, "expert_id": expert_id, "question": question,
                         "history_messages": prepared["history_messages"],
                         "retrieved": [{"article_id": b["article_id"], "section_id": b["section_id"]} for b in evidence],
@@ -242,6 +303,7 @@ citations — непустой массив объектов {article_id,section
                 validation_seconds += time.monotonic() - validation_started
                 if attempt == self.max_repairs:
                     raise
-                # No raw invalid content is forwarded as a new instruction.
-                messages.append({"role": "user", "content": "Исправь формат предыдущей попытки, сформировав ответ заново по исходным данным. Ошибка: " + str(error)})
+                # Retry with a server-owned instruction, without replaying the invalid output.
+                repair = "Сформируй ответ заново по исходным данным. Проверка не пройдена: " + str(error)
+                messages[0] = {**messages[0], "content": messages[0]["content"] + "\n\n" + repair}
         raise AssertionError("Unreachable")

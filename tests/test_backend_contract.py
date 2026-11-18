@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import main
 from rag_agent import RAGAgent
+from rag_agent.retrieval import search_rankings
 from rag_preprocessing import build_index
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +68,9 @@ class _FakeAgent:
         self.error = error
         self.calls: list[str] = []
 
+    def prepare_group(self, members, *, deadline=None):
+        return [{"article_id": "art_01", "section_id": "s001"}]
+
     def answer(self, question, expert_id, **kwargs):
         self.calls.append(expert_id)
         if expert_id in self.fail_for:
@@ -75,14 +79,15 @@ class _FakeAgent:
 
 
 class _FakeChat:
-    """Returns a valid compact answer for the first retrieved evidence block."""
+    """Returns a valid compact answer with adjacent citation markers."""
 
     def complete(self, messages, **kwargs):
         payload = json.loads(messages[1]["content"])
         if not payload.get("evidence"):
             raise AssertionError("fake chat needs evidence")
+        refs = [block["ref"] for block in payload["evidence"]]
         return {
-            "content": json.dumps({"text": "Ответ [1].", "refused": False, "refs": [1]}),
+            "content": json.dumps({"text": "Ответ" + "".join(f"[{ref}]" for ref in refs) + ".\n\nВторой абзац.", "refused": False, "refs": refs}),
             "finish_reason": "stop",
             "usage": {"total_tokens": 100},
             "seconds": 0.0,
@@ -100,6 +105,21 @@ class RunContractTests(unittest.TestCase):
         index = ROOT / "tmp" / "backend-test-index.sqlite3"
         build_index(dataset, index)
         agent = RAGAgent(index, dataset["experts"], _FakeChat(), history=dataset["chat_history"])
+        comparison = [request for request in dataset["requests"] if request["group_id"] == "g_se9fna"]
+        self.assertEqual(len(comparison), 3)
+        evidence = agent.prepare_group(comparison)
+        self.assertEqual([(item["article_id"], item["section_id"]) for item in evidence], [("art_12", "s015")])
+        paraphrase = agent.prepare(
+            "Если в офисе днём светло, меняет ли это разницу между экраном и книжкой перед сном?",
+            "clinician", user_id="synthetic", record_id="paraphrase",
+        )
+        first = paraphrase["evidence"][0]
+        self.assertEqual((first["article_id"], first["section_id"]), ("art_12", "s015"))
+        routine = [request for request in dataset["requests"] if request["group_id"] == "g_ueuvez"]
+        rankings = search_rankings(index, agent.group_query(routine))
+        self.assertIn("art_07", {hit["article_id"] for ranking in rankings for hit in ranking})
+        shared = agent.prepare_group(routine)
+        self.assertEqual([(item["article_id"], item["section_id"]) for item in shared], [("art_04", "s006")])
         result = main._answer_requests(
             agent, dataset, time.monotonic() + 300, main.RunContext(retry_delays=())
         )
@@ -141,8 +161,8 @@ class RunContractTests(unittest.TestCase):
         )
         self.assertEqual(len(result["requests"]), 3)
         self.assertFalse(result["requests"][0]["refused"])
-        self.assertTrue(result["requests"][1]["refused"])
-        self.assertTrue(result["requests"][2]["refused"])
+        self.assertFalse(result["requests"][1]["refused"])
+        self.assertFalse(result["requests"][2]["refused"])
         self.assertEqual(
             [item["citations"] for item in result["requests"]],
             [[{"article_id": "art_01", "section_id": "s001"}]] * 3,
@@ -159,7 +179,7 @@ class RunContractTests(unittest.TestCase):
         )
         self.assertEqual(len(result["requests"]), 3)
         self.assertEqual(agent.calls, ["clinician"])
-        self.assertTrue(all(item["refused"] for item in result["requests"]))
+        self.assertTrue(all(not item["refused"] for item in result["requests"]))
 
     def test_local_budget_exhaustion_is_not_retried(self):
         dataset = _dataset()
@@ -171,13 +191,14 @@ class RunContractTests(unittest.TestCase):
             agent, dataset, time.monotonic() + 60, main.RunContext(retry_delays=(0, 0))
         )
         self.assertEqual(len(agent.calls), 1)
-        self.assertTrue(all(item["refused"] for item in result["requests"]))
+        self.assertTrue(all(not item["refused"] for item in result["requests"]))
 
     def test_fallback_citation_exists_in_dataset(self):
-        answer = main._fallback_answer(_dataset(), _dataset()["requests"][0])
-        self.assertTrue(answer["refused"])
-        self.assertEqual(answer["citations"], [{"article_id": "art_01", "section_id": "s001"}])
-        self.assertIn("[art_01 / s001]", answer["text"])
+        evidence = [{"article_id": "art_02", "section_id": "s003"}]
+        answer = main._fallback_answer(_dataset()["requests"][0], evidence)
+        self.assertFalse(answer["refused"])
+        self.assertEqual(answer["citations"], evidence)
+        self.assertIn("[art_02 / s003]", answer["text"])
 
     @unittest.skipUnless(DEV_DATASET.is_file(), "dev dataset not present")
     def test_chat_handler_with_fake_client(self):
@@ -201,13 +222,14 @@ class RunContractTests(unittest.TestCase):
             main.INDEX_PATH, main._runtime = original_index, original_runtime
         self.assertEqual(response["session_id"], "test-session")
         self.assertFalse(response["refused"])
-        self.assertTrue(response["text"])
+        self.assertEqual(response["text"], "Ответ.\n\nВторой абзац.")
         self.assertEqual(set(response["citations"][0]), {
             "article_id", "section_id", "article_title", "section_title", "year",
         })
         self.assertEqual(len(runtime.sessions["test-session"]), 2)
         self.assertEqual(runtime.sessions["test-session"][0]["role"], "user")
         self.assertEqual(runtime.sessions["test-session"][1]["role"], "agent")
+        self.assertEqual(runtime.sessions["test-session"][1]["text"], response["text"])
 
     def test_run_route_returns_exact_body(self):
         dataset = _dataset()
@@ -229,39 +251,7 @@ class RunContractTests(unittest.TestCase):
         self.assertEqual(len(body["requests"]), 3)
         for answer in body["requests"]:
             self.assertEqual(set(answer), {"record_id", "text", "refused", "citations"})
-
-
-class _NarrowingAgent:
-    """Fake agent whose evidence cache behaves like the real ``RAGAgent``."""
-
-    def __init__(self, refuse_all: bool = False) -> None:
-        self.evidence_cache = {
-            "k": [
-                {"article_id": "art_01", "section_id": "s001", "text": "a", "metadata": {}},
-                {"article_id": "art_02", "section_id": "s002", "text": "b", "metadata": {}},
-            ]
-        }
-        self.citation_cache: dict[str, list[tuple[str, str]]] = {}
-        self.refuse_all = refuse_all
-        self.seen: list[tuple[str, tuple[tuple[str, str], ...]]] = []
-
-    def prepare(self, question, expert_id, *, user_id, record_id, at=None, deadline=None):
-        return {"cache_key": "k", "evidence": self.evidence_cache["k"]}
-
-    def answer(self, question, expert_id, *, user_id, record_id, at=None, deadline=None):
-        blocks = self.evidence_cache["k"]
-        pairs = tuple((block["article_id"], block["section_id"]) for block in blocks)
-        self.seen.append((expert_id, pairs))
-        pair = pairs[0]
-        self.citation_cache["k"] = [pair]
-        return {
-            "answer": {
-                "record_id": record_id,
-                "text": f"[{pair[0]} / {pair[1]}]",
-                "refused": self.refuse_all,
-                "citations": [{"article_id": pair[0], "section_id": pair[1]}],
-            }
-        }
+            self.assertIn("[art_01 / s001]", answer["text"])
 
 
 class QuotaAndCacheTests(unittest.TestCase):
@@ -347,40 +337,24 @@ class QuotaAndCacheTests(unittest.TestCase):
             self.assertNotEqual(main._run_cache_key(dataset), baseline)
 
 
-class EvidenceNarrowingTests(unittest.TestCase):
-    def _request(self):
-        return _dataset()["requests"][0]
+class SharedEvidenceTests(unittest.TestCase):
+    def test_evidence_is_selected_once_before_any_expert_answers(self):
+        class TrackingAgent(_FakeAgent):
+            def prepare_group(self, members, *, deadline=None):
+                self.calls.append("retrieve")
+                return super().prepare_group(members, deadline=deadline)
 
-    def test_non_refused_first_answer_narrows_evidence(self):
-        agent = _NarrowingAgent()
-        result = main._answer_requests(
-            agent, _dataset(), time.monotonic() + 60, main.RunContext(retry_delays=())
-        )
-        self.assertEqual([len(pairs) for _, pairs in agent.seen], [2, 1, 1])
-        expected = [{"article_id": "art_01", "section_id": "s001"}]
-        for answer in result["requests"]:
-            self.assertFalse(answer["refused"])
-            self.assertEqual(answer["citations"], expected)
+            def answer(self, question, expert_id, *, shared_evidence=None, **kwargs):
+                if shared_evidence != [{"article_id": "art_01", "section_id": "s001"}]:
+                    raise AssertionError("Shared evidence not passed")
+                return super().answer(question, expert_id, **kwargs)
 
-    def test_refusal_keeps_full_evidence_for_other_experts(self):
-        agent = _NarrowingAgent(refuse_all=True)
-        result = main._answer_requests(
-            agent, _dataset(), time.monotonic() + 60, main.RunContext(retry_delays=())
-        )
-        self.assertEqual([len(pairs) for _, pairs in agent.seen], [2, 2, 2])
-        self.assertTrue(all(answer["refused"] for answer in result["requests"]))
-
-    def test_restriction_is_best_effort(self):
-        main._restrict_evidence_to_answer(
-            object(), self._request(), _answer("r_clinician"), time.monotonic() + 60
-        )
-
-    def test_restriction_keeps_evidence_when_no_citation_is_cached(self):
-        agent = _NarrowingAgent()
-        main._restrict_evidence_to_answer(
-            agent, self._request(), _answer("r_clinician"), time.monotonic() + 60
-        )
-        self.assertEqual(len(agent.evidence_cache["k"]), 2)
+        agent = TrackingAgent()
+        dataset = _dataset()
+        dataset["requests"][1]["utterance"]["text"] = "A different wording"
+        result = main._answer_requests(agent, dataset, time.monotonic() + 60, main.RunContext(retry_delays=()))
+        self.assertEqual(agent.calls, ["retrieve", "clinician", "biohacker", "nutritionist"])
+        self.assertTrue(all(answer["text"].startswith("Answer") for answer in result["requests"]))
 
 
 if __name__ == "__main__":
