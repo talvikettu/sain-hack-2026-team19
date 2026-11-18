@@ -2,9 +2,9 @@ import { api } from './api.js';
 
 const $ = id => document.getElementById(id);
 const profiles = {
-  clinician: { name: 'Сомнолог', symbol: '☾', description: 'Читает доказательства как клиницист: механизм, сила доказательств и границы применимости выводов.', note: 'Крепкий сон. Лёгкое пробуждение.' },
-  biohacker: { name: 'Биохакер', symbol: '↗', description: 'Превращает вывод исследования в одну переменную, которую можно проверить на себе, — с метрикой и сроком.', note: 'Энергия в течение дня.' },
-  nutritionist: { name: 'Нутрициолог', symbol: '♧', description: 'Находит одну небольшую замену, которую можно привязать к уже имеющейся привычке, — без запретов и десятишаговых планов.', note: 'Доказательно. Проверяемо. Практично.' },
+  clinician: { name: 'Сомнолог', description: 'Читает доказательства как клиницист: механизм, сила доказательств и границы применимости выводов.', note: 'Крепкий сон. Лёгкое пробуждение.' },
+  biohacker: { name: 'Биохакер', description: 'Превращает вывод исследования в одну переменную, которую можно проверить на себе, — с метрикой и сроком.', note: 'Энергия в течение дня.' },
+  nutritionist: { name: 'Нутрициолог', description: 'Находит одну небольшую замену, которую можно привязать к уже имеющейся привычке, — без запретов и десятишаговых планов.', note: 'Доказательно. Проверяемо. Практично.' },
 };
 let available = [];
 let selected;
@@ -19,7 +19,22 @@ function el(tag, className, text) {
   if (text !== undefined) node.textContent = text;
   return node;
 }
-function profile(id) { return profiles[id] || { name: id, symbol: '✧', description: available.find(e => e.expert_id === id)?.role || '', note: 'Ответы на основе исследований.' }; }
+function profile(id) { return profiles[id] || { name: id, description: available.find(e => e.expert_id === id)?.role || '', note: 'Ответы на основе исследований.' }; }
+function expertIcon(id) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'icon');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(ns, 'use');
+  use.setAttribute('href', '#icon-' + (Object.hasOwn(profiles, id) ? id : 'expert'));
+  svg.append(use);
+  return svg;
+}
+function badge(id) {
+  const node = el('span', 'expert-symbol');
+  node.append(expertIcon(id));
+  return node;
+}
 function chatState() {
   if (!chats.has(selected)) chats.set(selected, { messages: [], session: undefined, draft: '' });
   return chats.get(selected);
@@ -31,10 +46,11 @@ function renderExperts() {
     const p = profile(id);
     const card = el('article', `expert-card ${id}`);
     const heading = el('div', 'card-heading');
-    heading.append(el('h2', '', p.name), el('span', 'expert-symbol', p.symbol));
+    heading.append(el('h2', '', p.name), badge(id));
     card.append(heading, el('p', 'description', p.description));
     const bottom = el('div', 'card-bottom');
     const button = el('button', 'select-button', 'Выбрать →');
+    button.dataset.expert = id;
     button.setAttribute('aria-label', `Выбрать эксперта: ${p.name}`);
     button.addEventListener('click', () => openChat(id));
     bottom.append(el('span', 'card-note', p.note), button);
@@ -65,7 +81,7 @@ function openChat(id) {
   $('selection').hidden = true;
   $('conversation').hidden = false;
   $('chat-title').textContent = profile(id).name;
-  $('back').textContent = profile(id).symbol;
+  $('back').replaceChildren(expertIcon(id));
   $('question').value = chatState().draft;
   const connected = available.some(e => e.expert_id === id);
   $('chat-error').textContent = connected ? '' : 'Нет подключения к backend. Интерфейс доступен для просмотра, но для ответов запустите сервер на порту 8000. После запуска можно отправить вопрос.';
@@ -78,7 +94,8 @@ function back() {
   $('conversation').hidden = true;
   $('selection').hidden = false;
   stopSpeech();
-  $('selection-title').focus();
+  const returnButton = [...$('experts').querySelectorAll('button')].find(button => button.dataset.expert === selected);
+  (returnButton || $('selection-title')).focus();
 }
 let speechButton;
 function stopSpeech() {
@@ -91,7 +108,7 @@ function renderMessages() {
   log.replaceChildren();
   if (!state.messages.length) {
     const welcome = el('div', 'welcome');
-    welcome.append(el('span', 'expert-symbol', profile(selected).symbol), el('h2', '', 'О чём поговорим?'), el('p', '', 'Задайте вопрос о сне. Эксперт ответит на основе исследований и покажет источники.'));
+    welcome.append(badge(selected), el('h2', '', 'О чём поговорим?'), el('p', '', 'Задайте вопрос о сне. Эксперт ответит на основе исследований и покажет источники.'));
     log.append(welcome);
   }
   for (const message of state.messages) {
@@ -136,7 +153,8 @@ function renderMessages() {
     button.addEventListener('click', () => { $('question').value = text; $('question').focus(); });
     $('suggestions').append(button);
   });
-  log.scrollTop = log.scrollHeight;
+  const scrollArea = log.parentElement;
+  scrollArea.scrollTop = state.messages.length ? scrollArea.scrollHeight : 0;
 }
 function setBusy(value) {
   busy = value;
