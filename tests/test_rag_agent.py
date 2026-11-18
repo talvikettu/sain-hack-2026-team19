@@ -4,9 +4,11 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import MagicMock
+from urllib.error import HTTPError
 
 from rag_agent import RAGAgent, ChatClient, ValidationError, validate_answer
-from rag_agent.agent import clean_answer_text, decode_compact, select_history
+from rag_agent.agent import clean_answer_text, decode_compact, normalize_refusal, select_history
+from rag_agent.client import ChatTransientError, ProxyProtocolError
 from rag_agent.retrieval import prioritize_evidence, topic_queries
 from rag_preprocessing import build_index
 
@@ -116,6 +118,31 @@ class AgentTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_answer({**answer, "refused": "false"}, "r", {("a", "s")})
 
+    def test_full_refusal_text_sets_the_flag(self):
+        answer = {"record_id": "r", "text": "Я не могу дать подтверждённый ответ [a / s].",
+                  "refused": False, "citations": [{"article_id": "a", "section_id": "s"}]}
+        self.assertTrue(normalize_refusal(answer)["refused"])
+        boundary = {"record_id": "r", "text": "Не могу рекомендовать дозировку, но режим сна важен [a / s].",
+                    "refused": False, "citations": [{"article_id": "a", "section_id": "s"}]}
+        self.assertFalse(normalize_refusal(boundary)["refused"])
+
+    def test_refusal_with_a_substantive_contrast_stays_substantive(self):
+        boundary = {
+            "record_id": "r",
+            "text": ("Я не могу дать точный ответ о причине, но исследование показывает, "
+                     "что кофеин задерживает засыпание [a / s]."),
+            "refused": False,
+            "citations": [{"article_id": "a", "section_id": "s"}],
+        }
+        self.assertFalse(normalize_refusal(boundary)["refused"])
+
+    def test_agent_normalizes_a_full_refusal_text(self):
+        client = FakeChat(first_text="Я не могу дать подтверждённый ответ [1].")
+        result = RAGAgent(self.index, self.experts, client).answer(
+            "caffeine", "clinician", user_id="u", record_id="r",
+        )
+        self.assertTrue(result["answer"]["refused"])
+
     def test_client_records_real_usage_and_enforces_call_cap(self):
         client = ChatClient("https://proxy.test/v1", "SECRET", "test-model", max_calls=1, min_interval=0)
         response = MagicMock()
@@ -128,6 +155,56 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result["finish_reason"], "stop")
         with self.assertRaises(RuntimeError):
             client.complete([{"role": "user", "content": "test"}])
+
+    def test_client_rejects_unaccountable_proxy_responses(self):
+        cases = {
+            "not an object": [],
+            "missing usage": {"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}]},
+            "bad usage": {"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+                          "usage": {"total_tokens": "123"}},
+            "no choices": {"choices": [], "usage": {"total_tokens": 123}},
+            "bad choice": {"choices": ["nope"], "usage": {"total_tokens": 123}},
+            "bad message": {"choices": [{"message": "nope", "finish_reason": "stop"}],
+                            "usage": {"total_tokens": 123}},
+            "no content": {"choices": [{"message": {}, "finish_reason": "stop"}],
+                           "usage": {"total_tokens": 123}},
+            "bad finish reason": {"choices": [{"message": {"content": "{}"}, "finish_reason": 1}],
+                                  "usage": {"total_tokens": 123}},
+        }
+        for name, payload in cases.items():
+            with self.subTest(name):
+                client = ChatClient("https://proxy.test/v1", "SECRET", "test-model",
+                                    max_calls=2, min_interval=0)
+                response = MagicMock()
+                response.read.return_value = json.dumps(payload).encode()
+                client.opener = MagicMock()
+                client.opener.open.return_value.__enter__.return_value = response
+                with self.assertRaises(ProxyProtocolError):
+                    client.complete([{"role": "user", "content": "test"}])
+
+    def test_client_rejects_invalid_json_as_a_protocol_error(self):
+        client = ChatClient("https://proxy.test/v1", "SECRET", "test-model",
+                            max_calls=1, min_interval=0)
+        response = MagicMock()
+        response.read.return_value = b"not-json"
+        client.opener = MagicMock()
+        client.opener.open.return_value.__enter__.return_value = response
+        with self.assertRaises(ProxyProtocolError):
+            client.complete([{"role": "user", "content": "test"}])
+
+    def test_client_exposes_retry_after_for_rate_limits(self):
+        from email.message import Message
+        headers = Message()
+        headers["Retry-After"] = "7"
+        client = ChatClient("https://proxy.test/v1", "SECRET", "test-model",
+                            max_calls=1, min_interval=0)
+        client.opener = MagicMock()
+        client.opener.open.side_effect = HTTPError(
+            "https://proxy.test/v1/chat/completions", 429, "Too Many Requests", headers, None,
+        )
+        with self.assertRaises(ChatTransientError) as raised:
+            client.complete([{"role": "user", "content": "test"}])
+        self.assertEqual(raised.exception.retry_after, 7.0)
 
     def test_compact_citation_mapping_rejects_hallucinated_slots(self):
         evidence = [{"article_id": "a", "section_id": "s"}]

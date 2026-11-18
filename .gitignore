@@ -1,5 +1,10 @@
 team19/
 
+# Local evaluation material: keep it on disk for development, never ship it
+data/dataset.json
+data/reference.json
+data/raw/case4-dev-v2.json
+
 # Local preprocessing artifacts and Python caches
 tmp/
 .rag-cache/

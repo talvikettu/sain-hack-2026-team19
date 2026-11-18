@@ -35,6 +35,32 @@ def clean_answer_text(text):
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+_FULL_REFUSAL = re.compile(
+    r"^\s*(?:к сожалению[,，]?\s*)?(?:я\s+)?(?:"
+    r"не могу (?:дать|ответить|продолжить)|"
+    r"не буду (?:отвечать|давать|продолжать)|"
+    r"это (?:вне|за пределами) моей компетенции|"
+    r"(?:дозировк|диагноз|лечени|назначени)\w*\s*[-—:]\s*не моя"
+    r")",
+    re.I,
+)
+
+
+_BOUNDARY_CONTRAST = re.compile(r"\b(?:но|однако|при\s+этом|тем\s+не\s+менее|зато)\b", re.I)
+
+
+def normalize_refusal(answer):
+    """Make a full refusal text consistent with the server-side flag.
+
+    A refusal opening followed by a substantive contrast (``..., но ...``)
+    stays a normal answer; the model's own boolean is preserved.
+    """
+    if (not answer["refused"] and _FULL_REFUSAL.search(answer["text"])
+            and not _BOUNDARY_CONTRAST.search(answer["text"])):
+        answer["refused"] = True
+    return answer
+
+
 def decode_compact(value, record_id, evidence):
     """Map numbered citations to trusted source IDs locally, without another call."""
     if not isinstance(value, dict) or set(value) != {"text", "refused", "refs"}:
@@ -286,6 +312,7 @@ citations — непустой массив объектов {article_id,section
                 validate_answer(answer, record_id, allowed, required)
                 if self.prompt_profile == "compact":
                     validate_compact_text(answer["text"], self.system)
+                answer = normalize_refusal(answer)
                 validation_seconds += time.monotonic() - validation_started
                 if required:
                     answer["citations"] = [{"article_id": a, "section_id": s} for a, s in required]

@@ -24,7 +24,7 @@ This navigation page is in English. Most detailed project documents and example 
 | [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
 | [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
-| [`data/`](data/) | Organizer dev materials already present in this branch: articles, expert descriptions, example requests, history, API schemas, and local evaluation references. |
+| [`data/`](data/) | Organizer dev materials: articles, expert descriptions, example requests, history, and API schemas. Local evaluation dumps are kept out of Git. |
 | [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |
 | [`reports/rag_compact_first10/`](reports/rag_compact_first10/) | Published snapshot of an earlier real 10-question compact run: answers, usage, timing, and evaluation. |
 | [`output/pdf/`](output/pdf/) | Russian and English technical-constraints PDFs. |
@@ -53,11 +53,15 @@ See [the data guide](data/README.md) for the complete inventory. Key inputs are:
 - [`experts.json`](data/experts.json): the three official fictional expert descriptions.
 - [`requests.json`](data/requests.json): 60 original example requests, including target expert IDs.
 - [`chat_history.json`](data/chat_history.json): available user conversation history.
-- [`dataset.json`](data/dataset.json): the complete dev input dataset.
 - [`schemas/`](data/schemas/): organizer JSON schemas.
-- [`reference.json`](data/reference.json): offline evaluation reference; never use it as retrieval evidence or include it in generation prompts.
 
-Current dev counts are not a guarantee about hidden datasets. Do not copy credentials into `data/`, expose dev/reference dumps through the client, or add hidden evaluation datasets to Git.
+`data/dataset.json`, `data/reference.json`, and `data/raw/case4-dev-v2.json`
+are local evaluation material. They stay on disk for development and tests,
+are listed in `.gitignore`, and are not part of the submitted package. Never
+use the reference as retrieval evidence, include it in generation prompts, or
+expose dev/reference dumps through the client. Current dev counts are not a
+guarantee about hidden datasets, and hidden evaluation datasets must not be
+added to Git.
 
 ## Processing flow
 
@@ -99,7 +103,7 @@ The script saves a local Markdown table and JSON with allowed, found, and missin
 
 ## Quick start
 
-Run commands from the repository root with Python 3.11 or newer. The implemented packages use the Python standard library; no third-party package installation is needed for these commands.
+Run commands from the repository root with Python 3.11 or newer. Install the backend dependencies once with `pip install -r requirements.txt`; for the test suite use `pip install -r requirements-dev.txt` (it includes the runtime requirements and `httpx2` for FastAPI's test client). The preprocessing and agent CLI commands below otherwise use the Python standard library.
 
 ### 1. Run tests — no API calls
 
@@ -147,6 +151,19 @@ These checks do not mean that every answer is correct. The manual review found s
 ## Integration and hosting limits
 
 This branch includes the FastAPI backend, `/run`, `/chat`, and the stand entrypoint. See the [backend guide](docs/BACKEND.md) for routes, deployment settings, and quota handling.
+
+`POST /run` receives `{"case": 4, "dataset_code": "..."}`, downloads
+`getData` once with the incoming organizer Bearer token, and returns the full
+`Case4Answers` JSON in the same response. The whole operation — waiting for the
+agent lock, download, index build, retrieval, and generation — shares a
+42-minute deadline inside the stand's 45-minute limit. A transient proxy
+failure pauses and retries later records instead of disabling generation for
+the run. If one group cannot use the model, the backend returns a safe
+extractive answer or a refusal with a real citation rather than invalid JSON.
+
+`/chat` uses a separate browser credential issued by `POST /session`; send it
+as `Authorization: Bearer <browser-token>`. The organizer `/run` token and the
+LLM key are never accepted as browser credentials and are never logged.
 
 The organizer backend environment has Python 3.11, 512 MB RAM, one CPU core, no GPU, and outbound access restricted to the hackathon API and LLM proxy. `/tmp` is limited to 256 MB and is not persistent across deployments. Rebuild or restore the index after deployment. The shared chat allowance is 30 requests/minute and 300,000 tokens/day; the CLI's local token budget does not account for other team members' usage.
 

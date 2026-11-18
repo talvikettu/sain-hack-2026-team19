@@ -1,0 +1,4 @@
+# Development material is never part of the stand deployment artifact.
+data/ export-ignore
+output/ export-ignore
+tmp/ export-ignore

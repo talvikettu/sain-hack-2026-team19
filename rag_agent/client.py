@@ -4,11 +4,32 @@ import json
 import os
 import threading
 import time
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener
 
 from rag_preprocessing.embeddings import NoRedirect
+
+
+class ChatError(RuntimeError):
+    """Base class for failures while talking to the organizer proxy."""
+
+
+class ChatTransientError(ChatError):
+    """Proxy failure that may carry a server-provided retry delay."""
+
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class BudgetError(ChatError):
+    """The local per-process call or token budget is exhausted."""
+
+
+class ProxyProtocolError(ChatError):
+    """The proxy answered, but the response cannot be safely accounted for."""
 
 
 class ChatClient:
@@ -40,7 +61,7 @@ class ChatClient:
         reserve = len(json.dumps(messages, ensure_ascii=False).encode("utf-8")) + max_tokens + 1000
         with self.lock:
             if self.calls >= self.max_calls or self.total_tokens + reserve > self.token_budget:
-                raise RuntimeError("Local LLM call/token budget exhausted")
+                raise BudgetError("Local LLM call/token budget exhausted")
             wait = max(0, self.last_request + self.min_interval - time.monotonic())
             if deadline is not None and time.monotonic() + wait >= deadline:
                 raise TimeoutError("LLM deadline exceeded")
@@ -51,9 +72,10 @@ class ChatClient:
         remaining = self.timeout if deadline is None else min(self.timeout, deadline - time.monotonic())
         if remaining <= 0:
             raise TimeoutError("LLM deadline exceeded")
-        request = Request(self.endpoint, data=json.dumps({
+        body = json.dumps({
             "model": self.model, "messages": messages, "max_tokens": max_tokens,
-        }, ensure_ascii=False).encode("utf-8"), headers={
+        }, ensure_ascii=False).encode("utf-8")
+        request = Request(self.endpoint, data=body, headers={
             "Authorization": "Bearer " + self.api_key, "Content-Type": "application/json",
         })
         started = time.monotonic()
@@ -61,25 +83,46 @@ class ChatClient:
             with self.opener.open(request, timeout=remaining) as response:
                 raw = response.read(2 * 1024 * 1024 + 1)
                 if len(raw) > 2 * 1024 * 1024:
-                    raise RuntimeError("Chat response too large")
+                    raise ProxyProtocolError("Chat response too large; stop to protect budget")
                 result = json.loads(raw)
         except HTTPError as exc:
-            raise RuntimeError(f"Chat proxy HTTP {exc.code}; no automatic retry") from None
-        except (URLError, TimeoutError):
-            raise RuntimeError("Chat proxy unavailable or timed out; no automatic retry") from None
-        usage = result.get("usage", {})
+            retry_after = None
+            header = exc.headers.get("Retry-After") if exc.headers else None
+            if header:
+                try:
+                    retry_after = max(0.0, float(header))
+                except ValueError:
+                    retry_after = None
+            raise ChatTransientError(
+                f"Chat proxy HTTP {exc.code}; no automatic retry", retry_after
+            ) from None
+        except (URLError, TimeoutError, HTTPException):
+            raise ChatTransientError("Chat proxy unavailable or timed out; no automatic retry") from None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise ProxyProtocolError("Chat proxy returned invalid JSON; stop to protect budget") from None
+        if not isinstance(result, dict):
+            raise ProxyProtocolError("Chat proxy response must be a JSON object; stop to protect budget")
+        usage = result.get("usage")
         if not isinstance(usage, dict) or type(usage.get("total_tokens")) is not int or usage["total_tokens"] < 0:
-            raise RuntimeError("Proxy response lacks valid token usage; stop to protect budget")
+            raise ProxyProtocolError("Proxy response lacks valid token usage; stop to protect budget")
         with self.lock:
             self.total_tokens += usage["total_tokens"]
         choices = result.get("choices")
         if not isinstance(choices, list) or not choices:
-            raise RuntimeError("Proxy returned no choices")
+            raise ProxyProtocolError("Proxy returned no choices; stop to protect budget")
         choice = choices[0]
-        content = choice.get("message", {}).get("content")
+        if not isinstance(choice, dict):
+            raise ProxyProtocolError("Proxy returned an invalid choice; stop to protect budget")
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            raise ProxyProtocolError("Proxy returned an invalid message; stop to protect budget")
+        content = message.get("content")
         if not isinstance(content, str):
-            raise RuntimeError("Proxy returned no text content")
+            raise ProxyProtocolError("Proxy returned no text content; stop to protect budget")
+        finish_reason = choice.get("finish_reason")
+        if finish_reason is not None and not isinstance(finish_reason, str):
+            raise ProxyProtocolError("Proxy returned an invalid finish reason; stop to protect budget")
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError("LLM deadline exceeded")
-        return {"content": content, "finish_reason": choice.get("finish_reason"),
+        return {"content": content, "finish_reason": finish_reason,
                 "usage": usage, "seconds": round(time.monotonic() - started, 3)}
