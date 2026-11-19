@@ -4,82 +4,8 @@
 
 ## 1. Запуск
 
-### Серверная часть на стенде
-
-1. Убедитесь, что в GitHub-репозитории команды включены Actions. Workflow уже находится в [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
-2. В **Settings → Secrets and variables → Actions → New repository secret** добавьте `STAND_SSH_KEY`. Вставьте полное содержимое файла `id_ed25519` из локального набора `team19`, включая строку начала и строку конца ключа. Остальные переменные для API и LLM выдаёт стенд. Ключи и токены хранятся вне репозитория.
-3. Выполните эту команду из корня проекта, чтобы отправить готовый коммит ветки `main`.
-
-   ```sh
-   git push origin main
-   ```
-
-   GitHub Actions отправит архив коммита на стенд. Стенд установит зависимости из [`requirements.txt`](requirements.txt) в Python 3.11 и запустит сервер командой `sh start.sh`. [`start.sh`](start.sh) запускает один процесс Uvicorn на `0.0.0.0` и порту из `PORT`. Стенд передаёт `HACK_API_URL`, `HACK_TEAM_TOKEN`, `LLM_BASE_URL`, `LLM_API_KEY` и `LLM_MODEL` через окружение.
-4. В **Actions** дождитесь строки `OK: sha=…` и сверьте SHA с `git rev-parse main`. До начала онлайн-показа проверьте [`/health` на стенде team19](https://team19.hack.be-healthy.tech/health). Для повторного деплоя уже опубликованной версии можно выбрать **Run workflow** во вкладке **Actions**.
-5. Для онлайн-показа отправьте SHA развёрнутого коммита через [форму онлайн-показа](https://forms.yandex.ru/u/6af9c3b597a37795c5e8da0e). В поле «Секрет команды» используйте значение из `team19/yandex_forms_secret.txt`. Срок сдачи и закрытия деплоя — **20 ноября, 12:00 МСК**.
-
-На онлайн-показе стенд сам вызывает `POST /run`. Сервер загружает набор по коду и Bearer-токену входящего запроса и возвращает весь результат в том же HTTP-ответе. `GET /` и `GET /health` возвращают JSON-статус. Архитектура, API и лимиты описаны в [документации бэкенда](docs/BACKEND.md).
-
-### Первый тестовый вариант клиента
-
-Клиент запускается отдельно от FastAPI. Для локальной проверки нужны Python 3.11 и Node.js 18 или новее. У веб-клиента нет npm-зависимостей.
-
-1. В первом терминале из корня репозитория установите зависимости бэкенда.
-
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
-
-2. В том же терминале задайте адреса и модель из набора команды. Укажите путь к локальной папке `team19`, если она лежит вне текущей копии репозитория. Для клиентского теста используйте dev-набор.
-
-   ```powershell
-   $teamKit = 'team19'
-   $env:HACK_API_URL = 'https://hack-api.be-healthy.tech'
-   $env:HACK_TEAM_TOKEN = (Get-Content -LiteralPath (Join-Path $teamKit 'api.token') -Raw).Trim()
-   $env:LLM_BASE_URL = 'https://bifrost.be-healthy.tech/v1'
-   $env:LLM_API_KEY = (Get-Content -LiteralPath (Join-Path $teamKit 'llm.key') -Raw).Trim()
-   $env:LLM_MODEL = 'gpt-6-luna'
-   $env:DEV_DATASET_CODE = 'case4-dev-v2'
-   New-Item -ItemType Directory -Force tmp | Out-Null
-   $env:CASE4_INDEX_PATH = Join-Path $PWD 'tmp/case4-index.sqlite3'
-   python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
-   ```
-
-3. Во втором терминале из корня проекта запустите клиент.
-
-   ```powershell
-   node web/scripts/dev.mjs
-   ```
-
-   Откройте [http://127.0.0.1:5173](http://127.0.0.1:5173) в браузере. Node.js раздаёт файлы из `web/src/` и проксирует клиентские запросы к `http://127.0.0.1:8000`. Если локальный бэкенд работает на другом порту, перед запуском задайте `BACKEND_URL` с его HTTP-адресом.
-
-В клиенте можно выбрать эксперта, отправить вопрос и раскрыть карточку источника. При первом запросе к API бэкенд загружает dev-набор. Вопросы в чате расходуют общую квоту LLM.
-
-### Локальные проверки
-
-Выполните команды из корня проекта.
-
-```powershell
-python -m pip install -r requirements-dev.txt
-New-Item -ItemType Directory -Force tmp | Out-Null
-$env:CASE4_INDEX_PATH = Join-Path $PWD 'tmp/case4-test-index.sqlite3'
-python -m unittest discover -s tests -v
-node --test web/tests/api.test.mjs
-node web/scripts/build.mjs
-```
-
-Тесты используют заглушки для внешних вызовов. Команда сборки копирует клиент в локальный каталог `web/dist/`. Для проверки формата организаторами отправьте полный JSON-ответ `POST /run` на dev-наборе в `POST /case/4/validate` с командным токеном. Успешная проверка возвращает `"valid": true`.
-
-Для проверки поиска без LLM используйте локальные материалы из `data/`.
-
-```powershell
-python data/verify_data.py
-python -m rag_preprocessing build --input data/articles.json --output tmp/rag/index.sqlite3
-python scripts/evaluate_retrieval.py --output tmp/retrieval_evaluation
-python -m rag_agent --profile compact --limit 10 --dry-run --output tmp/rag_preview
-```
-
-Архитектура и настройки описаны в технической документации. [Предобработка и поиск](docs/RAG_PREPROCESSING_PIPELINE_RU.md) · [RAG-агент](docs/RAG_SYSTEM.md) · [Профили промптов](docs/RAG_TOKEN_OPTIMIZATION_RU.md)
+- Серверная часть на стенде — `sh start.sh`.
+- Клиент, первый тестовый вариант — `node web/scripts/dev.mjs`.
 
 ## 2. Роли
 
