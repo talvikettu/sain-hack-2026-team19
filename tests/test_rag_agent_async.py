@@ -16,7 +16,7 @@ def completion(messages, **_):
     payload = json.loads(messages[1]["content"])
     source = payload["evidence"][0]
     if "ref" in source:
-        answer = {"text": "Вывод [1].", "refused": False, "refs": [1]}
+        answer = {"decision": "answer", "text": "Вывод [1].", "refs": [1]}
     else:
         citation = {key: source[key] for key in ("article_id", "section_id")}
         answer = {"record_id": payload["record_id"], "text": "Вывод [a / s].",

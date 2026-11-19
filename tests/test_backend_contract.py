@@ -87,7 +87,7 @@ class _FakeChat:
             raise AssertionError("fake chat needs evidence")
         refs = [block["ref"] for block in payload["evidence"]]
         return {
-            "content": json.dumps({"text": "Ответ" + "".join(f"[{ref}]" for ref in refs) + ".\n\nВторой абзац.", "refused": False, "refs": refs}),
+            "content": json.dumps({"decision": "answer", "text": "Ответ" + "".join(f"[{ref}]" for ref in refs) + ".\n\nВторой абзац.", "refs": refs}),
             "finish_reason": "stop",
             "usage": {"total_tokens": 100},
             "seconds": 0.0,

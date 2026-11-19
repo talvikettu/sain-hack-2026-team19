@@ -10,8 +10,8 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_agent import RAGAgent
-from rag_agent.retrieval import CANDIDATE_DEPTH, RERANK_DEPTH, ROUTINE_SEARCH_DEPTH, merge_rankings, search_rankings
-from rag_preprocessing import build_index, pack_context
+from rag_agent.retrieval import CANDIDATE_DEPTH, RERANK_DEPTH, ROUTINE_SEARCH_DEPTH, search_rankings
+from rag_preprocessing import build_index
 
 
 def read_json(path):
@@ -29,10 +29,10 @@ def measure(dataset, reference, index):
 
     rows_by_id = {}
     for group in groups.values():
-        rankings = search_rankings(index, agent.group_query(group))
+        query = agent.group_query(group)
+        rankings = search_rankings(index, query)
         candidates = {hit["article_id"] for ranking in rankings for hit in ranking}
-        hits = merge_rankings([ranking[:agent.top_k] for ranking in rankings], agent.top_k)
-        evidence = pack_context(index, hits, max_chars=agent.context_chars)
+        evidence = agent._pack_group_evidence(query, rankings)
         selected = evidence[0] if evidence else None  # Same shared anchor as /run.
         chosen = f"{selected['article_id']} / {selected['section_id']}" if selected else None
         for request in group:

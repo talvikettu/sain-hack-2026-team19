@@ -29,6 +29,27 @@ _DELAYED_TIMING = (
     r"засып\w*\s+под\s+утро|delayed sleep|insomnia"
 )
 
+# Match the conditions specified in the question against passages in the
+# already selected article. Keep the main topic when a more precise hit is absent.
+_GROUP_FOCUS = (
+    (
+        r"(?:жар|душно|температур|heat).*(?:перв\w* половин|начал\w* ноч|early night|first half)",
+        (r"\b(?:heat|thermal)\b", r"\b(?:initial|early|first) (?:part|half|segment|portion)\b",
+         r"\b(?:wakefulness|awakenings?)\b"),
+    ),
+    (
+        r"(?:будн|выходн|weekday|weekend).*(?:чем.{0,30}плох|вред|последств|harm|consequence)",
+        (r"\b(?:irregular sleep|irregular sleepers|sleep regularity)\b",
+         r"\b(?:delayed|later) circadian (?:timing|rhythms?|phase)\b",
+         r"\b(?:associated|association|linked)\b"),
+    ),
+    (
+        r"(?:пробеж|бег\w*|нагрузк|exercise|running).*(?:ложусь|до сна|bedtime)",
+        (r"\bmoderate\b", r"\b(?:exercise.to.sleep|exercise sleep latency|buffer|interval)\b",
+         r"\b(?:study|laboratory|experiment)\b"),
+    ),
+)
+
 
 def references_history(question):
     return bool(re.search(
@@ -129,6 +150,22 @@ def merge_rankings(rankings, top_k):
                 hit = ranking[position]
                 selected.setdefault(hit["chunk_id"], hit)
     return list(selected.values())[:top_k]
+
+
+def select_group_hits(rankings, question, top_k):
+    """Prefer a passage that covers the question's conditions within the main article."""
+    primary = merge_rankings([ranking[:top_k] for ranking in rankings], top_k)
+    if not primary:
+        return primary
+    for trigger, required_terms in _GROUP_FOCUS:
+        if not re.search(trigger, question, re.I | re.S):
+            continue
+        for ranking in rankings:
+            for hit in ranking:
+                if (hit["article_id"] == primary[0]["article_id"]
+                        and all(re.search(term, hit["text"], re.I) for term in required_terms)):
+                    return [hit, *(other for other in primary if other["chunk_id"] != hit["chunk_id"])]
+    return primary
 
 
 def prioritize_evidence(hits, top_k, *, comparison_daylight=False):

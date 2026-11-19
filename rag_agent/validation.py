@@ -5,6 +5,9 @@ import re
 import unicodedata
 
 
+_COMPACT_DECISIONS = {"answer", "diagnosis", "treatment", "unsupported_method"}
+
+
 class ValidationError(ValueError):
     pass
 
@@ -27,8 +30,11 @@ def clean_answer_text(text):
 
 def decode_compact(value, record_id, evidence):
     """Map numbered citations to trusted source IDs locally, without another call."""
-    if not isinstance(value, dict) or set(value) != {"text", "refused", "refs"}:
-        raise ValidationError("Return exactly text, refused and refs")
+    if not isinstance(value, dict) or set(value) != {"decision", "text", "refs"}:
+        raise ValidationError("Return exactly decision, text and refs")
+    decision = value["decision"]
+    if not isinstance(decision, str) or decision not in _COMPACT_DECISIONS:
+        raise ValidationError("decision must be answer, diagnosis, treatment or unsupported_method")
     refs = value["refs"]
     if (not isinstance(refs, list) or not refs or any(type(n) is not int or not 1 <= n <= len(evidence) for n in refs)
             or len(refs) != len(set(refs))):
@@ -48,7 +54,7 @@ def decode_compact(value, record_id, evidence):
         if pair not in seen:
             citations.append({"article_id": pair[0], "section_id": pair[1]})
             seen.add(pair)
-    return {"record_id": record_id, "text": text, "refused": value["refused"], "citations": citations}
+    return {"record_id": record_id, "text": text, "refused": decision != "answer", "citations": citations}
 
 
 def validate_answer(value, record_id, allowed, required=None):
@@ -95,6 +101,8 @@ def validate_compact_text(text, system_prompt):
     html_tag = r"</?[a-z][a-z0-9:-]*(?:\s[^<>]*)?\s*/?>"
     if re.search(outside_link + "|" + html_tag, text, re.I):
         raise ValidationError("Use plain text and numbered evidence citations only")
+    if re.search(r'\b(?:decision|refused)["\']?\s*[:=]', text, re.I):
+        raise ValidationError("Keep decision and refusal labels out of text")
     if re.search(r"(?im)^\s*(?:уважаем\w*\s+)?(?:проверяющ\w+|судья|judge)\s*[,!:]", text):
         raise ValidationError("Address the user only")
     for paragraph in system_prompt.split("\n\n"):

@@ -11,7 +11,7 @@ from rag_preprocessing import pack_context
 from .generation import Generation
 from .history import group_search_query, select_history
 from .prompts import PERSONA_FILES, render_messages
-from .retrieval import merge_rankings, references_history, search_rankings
+from .retrieval import merge_rankings, references_history, search_rankings, select_group_hits
 # Compatibility for existing direct imports from rag_agent.agent.
 from .validation import ValidationError, clean_answer_text, decode_compact, safety_flags, validate_answer, validate_compact_text
 
@@ -58,10 +58,17 @@ class RAGAgent:
 
     def prepare_group(self, records, *, deadline=None):
         """Select shared evidence before generating the first expert answer."""
-        # Pick a common anchor only after retrieving across the question's topics.
-        # Requiring multiple sources can force every expert to cite weak matches.
-        evidence = self._retrieve(self.group_query(records), deadline)
+        question = self.group_query(records)
+        if self.prompt_profile == "compact":
+            rankings = search_rankings(self.index, question, deadline=deadline)
+            evidence = self._pack_group_evidence(question, rankings)
+        else:
+            evidence = self._retrieve(question, deadline)
         return evidence[:1]
+
+    def _pack_group_evidence(self, question, rankings):
+        hits = select_group_hits(rankings, question, self.top_k)
+        return pack_context(self.index, hits, max_chars=self.context_chars)
 
     def prepare(self, question, expert_id, *, user_id, record_id, at=None, deadline=None, shared_evidence=None):
         """Build an inspectable request without calling the model."""
