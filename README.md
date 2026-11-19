@@ -153,18 +153,25 @@ These checks do not mean that every answer is correct. The manual review found s
 This branch includes the FastAPI backend, `/run`, `/chat`, and the stand entrypoint. See the [backend guide](docs/BACKEND.md) for routes, deployment settings, and quota handling.
 
 `POST /run` receives `{"case": 4, "dataset_code": "..."}`, downloads
-`getData` once with the incoming organizer Bearer token, and returns the full
-`Case4Answers` JSON in the same response. The whole operation — waiting for the
-agent lock, download, index build, retrieval, and generation — shares a
-42-minute deadline inside the stand's 45-minute limit. A transient proxy
-failure pauses and retries later records instead of disabling generation for
-the run. If one group cannot use the model, the backend returns a safe
-extractive answer or a refusal with a real citation rather than invalid JSON.
+`getData` once with the incoming organizer Bearer token, validates the dataset
+contract, and returns the full `Case4Answers` JSON in the same response. The
+download, candidate index build, retrieval and generation share a 42-minute
+deadline inside the stand's 45-minute limit. The candidate dataset is published
+only after the run succeeds or a valid cache entry is found, so a failed run
+cannot replace the runtime serving `/chat`. A transient proxy failure pauses
+and retries later records instead of disabling generation for the run. If one
+group cannot use the model, the backend returns a safe extractive answer or a
+refusal with a real citation rather than invalid JSON.
 
 `/chat` uses a separate browser credential issued by `POST /session`; send it
 as `Authorization: Bearer <browser-token>`. The organizer `/run` token and the
-LLM key are never accepted as browser credentials and are never logged.
+LLM key are never accepted as browser credentials and are never logged. Every
+chat response carries a `dataset_generation`; pass it to `/source` to avoid
+showing a section from a newer dataset. Optional `turn_id` values make a lost
+turn replayable without spending the model budget twice. `/chat` does not wait
+for an official `/run`, and chat calls are capped atomically so the run's
+quota reserve always survives.
 
-The organizer backend environment has Python 3.11, 512 MB RAM, one CPU core, no GPU, and outbound access restricted to the hackathon API and LLM proxy. `/tmp` is limited to 256 MB and is not persistent across deployments. Rebuild or restore the index after deployment. The shared chat allowance is 30 requests/minute and 300,000 tokens/day; the CLI's local token budget does not account for other team members' usage.
+The organizer backend environment has Python 3.11, 512 MB RAM, one CPU core, no GPU, and outbound access restricted to the hackathon API and LLM proxy. `/tmp` is limited to 256 MB and is not persistent across deployments. Rebuild or restore the index after deployment. Run exactly one Uvicorn worker: the runtime, browser sessions and LLM counters are process-local, and `start.sh` starts one worker. The shared chat allowance is 30 requests/minute and 300,000 tokens/day; the CLI's local token budget does not account for other team members' usage.
 
 See the [technical-constraints PDFs](output/pdf/) and the local organizer README for deployment details. `team19/`, environment files, generated SQLite indexes, and temporary output must stay out of commits. The published report directory is a deliberate, limited snapshot, not a reason to commit every local run or raw dataset.

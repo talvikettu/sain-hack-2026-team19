@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from pydantic import ValidationError as PydanticValidationError
 
 import main
 from rag_agent import RAGAgent
+from rag_agent.client import (
+    BudgetError, ChatClient, ChatTerminalError, ChatTransientError,
+)
 from rag_agent.retrieval import search_rankings
 from rag_preprocessing import build_index
 
@@ -393,6 +397,7 @@ class RunContractTests(unittest.TestCase):
         self.assertEqual(response["text"], "Ответ.\n\nВторой абзац.")
         self.assertEqual(set(response["citations"][0]), {
             "article_id", "section_id", "article_title", "section_title", "year",
+            "dataset_generation",
         })
         self.assertEqual(len(runtime.sessions[session_id]), 2)
         self.assertEqual(runtime.sessions[session_id][0]["role"], "user")
@@ -473,7 +478,9 @@ class RunContractTests(unittest.TestCase):
 
         runtime.client = Client()
         self.assertFalse(main._chat_budget_available(runtime))
-        runtime.run_completed = True
+        # The official-run reserve stays in place even after a completed run:
+        # a retry must not find the budget consumed by demo traffic.
+        runtime.client.calls = main.LLM_MAX_CALLS - main._run_reserve_calls(runtime) - 1
         self.assertTrue(main._chat_budget_available(runtime))
 
     def test_chat_session_owner_comes_from_the_server_session(self):
@@ -585,7 +592,7 @@ class RunContractTests(unittest.TestCase):
         with self.assertRaises(main.HTTPException):
             main._resolve_browser_session(runtime, authorization)
         self.assertNotIn(session_id, runtime.sessions)
-        self.assertNotIn(session_id, runtime.issued_sessions)
+        self.assertNotIn(session_id, runtime.session_users)
         self.assertNotIn(session_id, runtime.chat_times)
         self.assertEqual(runtime.session_tokens, {})
 
@@ -738,6 +745,7 @@ class QuotaAndCacheTests(unittest.TestCase):
     def setUp(self):
         with main._run_cache_lock:
             main._run_cache.clear()
+            main._run_cache_sizes.clear()
 
     def _run_twice(self, agent, dataset, first_code="code-1", second_code="code-2"):
         runtime = main.Runtime(dataset, object(), agent)
@@ -769,9 +777,9 @@ class QuotaAndCacheTests(unittest.TestCase):
         first, second, fetch, builds = self._run_twice(agent, dataset)
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
-        # The runtime is rebuilt/activated even on a cache hit so the demo
-        # endpoints never point at a previously submitted dataset.
-        self.assertEqual(len(builds), 2)
+        # Identical content reuses the active runtime: no index rebuild and no
+        # browser-session reset on a same-content cache hit.
+        self.assertEqual(len(builds), 1)
         self.assertEqual(fetch.call_count, 2)
         self.assertEqual(json.loads(first.body), json.loads(second.body))
         self.assertEqual(agent.calls, ["clinician", "biohacker", "nutritionist"])
@@ -781,7 +789,7 @@ class QuotaAndCacheTests(unittest.TestCase):
     def test_cache_hit_activates_the_requested_dataset(self):
         dataset_a = _dataset()
         dataset_b = json.loads(json.dumps(dataset_a))
-        dataset_b["articles"][0]["article_id"] = "art_09"
+        dataset_b["articles"][0]["title"] = "Evening light"
         for request in dataset_b["requests"]:
             request["utterance"]["text"] = "evening light"
         agent_a, agent_b = _FakeAgent(), _FakeAgent()
@@ -904,6 +912,326 @@ class SharedEvidenceTests(unittest.TestCase):
         result = main._answer_requests(agent, dataset, time.monotonic() + 60, main.RunContext(retry_delays=()))
         self.assertEqual(agent.calls, ["retrieve", "clinician", "biohacker", "nutritionist"])
         self.assertTrue(all(answer["text"].startswith("Answer") for answer in result["requests"]))
+
+
+class AuditFixTests(unittest.TestCase):
+    """Regression coverage for the backend audit findings H2-H4 and M1-M10."""
+
+    def setUp(self):
+        with main._run_cache_lock:
+            main._run_cache.clear()
+            main._run_cache_sizes.clear()
+        self.original_runtime = main._runtime
+
+    def tearDown(self):
+        main._runtime = self.original_runtime
+
+    def test_same_content_run_reuses_runtime_and_preserves_browser_session(self):
+        dataset = _dataset()
+        agent = _FakeAgent()
+        runtime = main.Runtime(dataset, object(), agent)
+        builds = []
+
+        def build(loaded, deadline, index_key=None):
+            builds.append(loaded)
+            return runtime
+
+        with patch.object(main, "_fetch_dataset", return_value=dataset), \
+                patch.object(main, "_build_runtime", side_effect=build):
+            first = main.run(
+                main.RunRequest(case=4, dataset_code="code-1"),
+                authorization="Bearer test-token",
+            )
+            session_id, authorization = _chat_credential(runtime)
+            runtime.sessions[session_id].append({
+                "message_id": "m1", "user_id": "u1", "role": "user",
+                "at": "2026-11-17T12:00:00+03:00", "text": "keep this history",
+            })
+            second = main.run(
+                main.RunRequest(case=4, dataset_code="code-2"),
+                authorization="Bearer test-token",
+            )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(len(builds), 1)
+        self.assertIs(main._runtime, runtime)
+        resolved_session, owner = main._resolve_browser_session(runtime, authorization)
+        self.assertEqual((resolved_session, owner), (session_id, "u1"))
+        self.assertEqual(len(runtime.sessions[session_id]), 1)
+        self.assertEqual(runtime.sessions[session_id][0]["text"], "keep this history")
+
+    def test_failed_candidate_does_not_replace_active_runtime(self):
+        dataset_a = _dataset()
+        dataset_b = json.loads(json.dumps(dataset_a))
+        dataset_b["articles"][0]["title"] = "Evening light"
+        runtime_a = main.Runtime(dataset_a, object(), _FakeAgent())
+        candidate_index = main._index_path_for(main._run_cache_key(dataset_b))
+        candidate_index.parent.mkdir(parents=True, exist_ok=True)
+        candidate_index.write_bytes(b"candidate")
+        runtime_b = main.Runtime(
+            dataset_b, object(), _FakeAgent(), index_path=candidate_index
+        )
+        original_answer_requests = main._answer_requests
+
+        def answer_requests(agent, dataset, deadline, context):
+            if dataset is dataset_b:
+                raise RuntimeError("fatal candidate failure")
+            return original_answer_requests(agent, dataset, deadline, context)
+
+        try:
+            with patch.object(main, "_fetch_dataset", side_effect=[dataset_a, dataset_b]), \
+                    patch.object(main, "_build_runtime", side_effect=[runtime_a, runtime_b]), \
+                    patch.object(main, "_answer_requests", side_effect=answer_requests):
+                first = main.run(
+                    main.RunRequest(case=4, dataset_code="a"),
+                    authorization="Bearer test-token",
+                )
+                with self.assertRaises(main.HTTPException) as raised:
+                    main.run(
+                        main.RunRequest(case=4, dataset_code="b"),
+                        authorization="Bearer test-token",
+                    )
+        finally:
+            candidate_index.unlink(missing_ok=True)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(raised.exception.status_code, 500)
+        self.assertIs(main._runtime, runtime_a)
+        self.assertFalse(candidate_index.exists())
+
+    def test_chat_allowance_is_rechecked_at_each_proxy_call(self):
+        response = MagicMock()
+        response.read.return_value = json.dumps({
+            "choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+            "usage": {"total_tokens": 1},
+        }).encode()
+        client = ChatClient(
+            "https://proxy.test/v1", "SECRET", "test-model",
+            max_calls=10, min_interval=0,
+        )
+        client.opener = MagicMock()
+        client.opener.open.return_value.__enter__.return_value = response
+        client.complete([{"role": "user", "content": "x"}], call_ceiling=1)
+        with self.assertRaises(BudgetError):
+            client.complete([{"role": "user", "content": "x"}], call_ceiling=1)
+
+        token_limited = ChatClient(
+            "https://proxy.test/v1", "SECRET", "test-model",
+            max_calls=10, min_interval=0,
+        )
+        token_limited.opener = MagicMock()
+        token_limited.opener.open.return_value.__enter__.return_value = response
+        with self.assertRaises(BudgetError):
+            token_limited.complete([{"role": "user", "content": "x"}], token_ceiling=50)
+
+    def test_wrong_record_id_is_rejected_before_cache_or_response(self):
+        class WrongRecordAgent(_FakeAgent):
+            def answer(self, question, expert_id, **kwargs):
+                result = super().answer(question, expert_id, **kwargs)
+                result["answer"]["record_id"] = "wrong"
+                return result
+
+        dataset = _dataset()
+        context = main.RunContext(retry_delays=())
+        result = main._answer_requests(
+            WrongRecordAgent(), dataset, time.monotonic() + 60, context
+        )
+        self.assertEqual(
+            [answer["record_id"] for answer in result["requests"]],
+            [request["record_id"] for request in dataset["requests"]],
+        )
+        self.assertEqual(context.generated, 0)
+        self.assertEqual(context.validation_failures, 3)
+        self.assertEqual(context.fallbacks, 3)
+
+    def test_duplicate_input_record_ids_are_rejected(self):
+        dataset = _dataset()
+        dataset["requests"].append(json.loads(json.dumps(dataset["requests"][0])))
+        with self.assertRaises(ValueError):
+            main._answer_requests(
+                _FakeAgent(), dataset, time.monotonic() + 60,
+                main.RunContext(retry_delays=()),
+            )
+
+    def test_chat_failure_before_commit_leaves_history_unchanged(self):
+        runtime = main.Runtime(_dataset(), _FakeChat(), _FakeAgent())
+        session_id, authorization = _chat_credential(runtime)
+        main._runtime = runtime
+
+        class MissingRefusalAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def answer(self, *args, **kwargs):
+                return {"answer": {
+                    "record_id": "x",
+                    "text": "hello [art_01 / s001]",
+                    "citations": [{"article_id": "art_01", "section_id": "s001"}],
+                }}
+
+        with patch.object(main, "RAGAgent", MissingRefusalAgent):
+            with self.assertRaises(main.HTTPException) as raised:
+                main.chat(
+                    main.ChatRequest(expert_id="clinician", message="hello"),
+                    authorization=authorization,
+                )
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(runtime.sessions[session_id], [])
+        self.assertEqual(runtime.inflight_turns, {})
+        self.assertEqual(runtime.busy_sessions, set())
+
+        class MissingSourceAgent(MissingRefusalAgent):
+            def answer(self, *args, **kwargs):
+                return {"answer": {
+                    "record_id": "x",
+                    "text": "hello [art_99 / s999]",
+                    "refused": False,
+                    "citations": [{"article_id": "art_99", "section_id": "s999"}],
+                }}
+
+        with patch.object(main, "RAGAgent", MissingSourceAgent):
+            with self.assertRaises(main.HTTPException):
+                main.chat(
+                    main.ChatRequest(expert_id="clinician", message="hello"),
+                    authorization=authorization,
+                )
+        self.assertEqual(runtime.sessions[session_id], [])
+
+    def test_second_turn_for_a_busy_session_is_rejected(self):
+        runtime = main.Runtime(_dataset(), _FakeChat(), _FakeAgent())
+        session_id, authorization = _chat_credential(runtime)
+        main._runtime = runtime
+        runtime.busy_sessions.add(session_id)
+        with self.assertRaises(main.HTTPException) as raised:
+            main.chat(
+                main.ChatRequest(expert_id="clinician", message="hello"),
+                authorization=authorization,
+            )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(runtime.inflight_turns, {})
+
+    def test_completed_turn_id_replays_without_second_generation(self):
+        dataset = _dataset()
+        index = ROOT / "tmp" / "backend-test-idempotency-index.sqlite3"
+        build_index(dataset, index)
+
+        class CountingChat(_FakeChat):
+            def __init__(self):
+                self.calls = 0
+                self.total_tokens = 0
+
+            def complete(self, messages, **kwargs):
+                self.calls += 1
+                return super().complete(messages, **kwargs)
+
+        client = CountingChat()
+        agent = RAGAgent(index, dataset["experts"], client)
+        runtime = main.Runtime(dataset, client, agent, index_path=index)
+        session_id, authorization = _chat_credential(runtime)
+        main._runtime = runtime
+        request = main.ChatRequest(
+            expert_id="clinician",
+            message="Как кофеин влияет на сон?",
+            session_id=session_id,
+            turn_id="turn-1",
+        )
+        first = main.chat(request, authorization=authorization)
+        second = main.chat(request, authorization=authorization)
+        self.assertEqual(first, second)
+        self.assertEqual(client.calls, 1)
+        self.assertEqual(len(runtime.sessions[session_id]), 2)
+        self.assertIn((session_id, "turn-1"), runtime.completed_turns)
+        with self.assertRaises(main.HTTPException) as raised:
+            main.chat(
+                main.ChatRequest(
+                    expert_id="clinician",
+                    message="A different question",
+                    session_id=session_id,
+                    turn_id="turn-1",
+                ),
+                authorization=authorization,
+            )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(len(runtime.sessions[session_id]), 2)
+
+    def test_citation_generation_and_stale_source(self):
+        runtime = main.Runtime(_dataset(), _FakeChat(), _FakeAgent())
+        runtime.set_dataset_key("a" * 64)
+        enriched = main._enrich_citations(
+            runtime, [{"article_id": "art_01", "section_id": "s001"}]
+        )
+        self.assertEqual(enriched[0]["dataset_generation"], runtime.generation)
+        main._runtime = runtime
+        with self.assertRaises(main.HTTPException) as raised:
+            main.source("art_01", "s001", generation="old-generation")
+        self.assertEqual(raised.exception.status_code, 409)
+        body = main.source("art_01", "s001", generation=runtime.generation)
+        self.assertEqual(body["dataset_generation"], runtime.generation)
+        self.assertEqual(body["text"], "Caffeine can delay sleep.")
+
+    def test_invalid_dataset_does_not_replace_active_runtime(self):
+        active = main.Runtime(_dataset(), object(), _FakeAgent())
+        main._runtime = active
+        invalid = _dataset()
+        del invalid["articles"][0]["title"]
+        with patch.object(main, "_fetch_dataset", return_value=invalid):
+            with self.assertRaises(main.HTTPException) as raised:
+                main.run(
+                    main.RunRequest(case=4, dataset_code="invalid"),
+                    authorization="Bearer test-token",
+                )
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertIs(main._runtime, active)
+        with main._run_cache_lock:
+            self.assertEqual(main._run_cache, {})
+
+    def test_cache_entry_size_is_bounded(self):
+        with patch.object(main, "RUN_CACHE_MAX_ENTRY_BYTES", 16), \
+                patch.object(main, "RUN_CACHE_MAX_BYTES", 64):
+            main._cache_store("big", {"requests": [{"text": "x" * 100}]})
+            self.assertIsNone(main._cache_lookup("big"))
+            main._cache_store("small", {"requests": []})
+            self.assertIsNotNone(main._cache_lookup("small"))
+
+    def test_session_issue_budget_is_separate_from_chat_budget(self):
+        runtime = main.Runtime(_dataset(), object(), _FakeAgent())
+        for _ in range(main.CHAT_SESSION_ISSUE_LIMIT):
+            self.assertTrue(main._session_issue_allowed(runtime))
+        self.assertFalse(main._session_issue_allowed(runtime))
+        # Issuance did not consume the chat bucket.
+        self.assertTrue(main._chat_global_rate_allowed(runtime))
+
+    def test_session_capacity_keeps_fresh_browsers(self):
+        with patch.object(main, "CHAT_MAX_SESSIONS", 1), \
+                patch.object(main, "CHAT_SESSION_EVICT_GRACE_SECONDS", 300):
+            runtime = main.Runtime(_dataset(), object(), _FakeAgent())
+            first, _ = main._create_chat_session(runtime)
+            with self.assertRaises(main.SessionCapacityError):
+                main._create_chat_session(runtime)
+            self.assertIn(first, runtime.sessions)
+            runtime.session_touched[first] = time.monotonic() - 301
+            second, _ = main._create_chat_session(runtime)
+            self.assertNotIn(first, runtime.sessions)
+            self.assertIn(second, runtime.sessions)
+
+    def test_request_id_header_is_returned(self):
+        client = TestClient(main.app)
+        response = client.get("/health", headers={"X-Request-ID": "audit-123"})
+        self.assertEqual(response.headers["X-Request-ID"], "audit-123")
+        generated = client.get("/health", headers={"X-Request-ID": "not valid"})
+        self.assertRegex(generated.headers["X-Request-ID"], r"^[0-9a-f]{16}$")
+
+    def test_terminal_http_error_stops_generation(self):
+        terminal = ChatTerminalError("Chat proxy HTTP 401", status_code=401)
+        transient = ChatTransientError(
+            "Chat proxy HTTP 429", status_code=429, retryable=True,
+        )
+        self.assertFalse(main._retryable(terminal))
+        self.assertTrue(main._retryable(transient))
+        context = main.RunContext(retry_delays=(0, 0))
+        main._note_failure(terminal, context)
+        self.assertTrue(context.skip_llm)
+        self.assertEqual(context.transient_failures, 0)
 
 
 if __name__ == "__main__":

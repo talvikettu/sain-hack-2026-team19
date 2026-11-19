@@ -17,11 +17,23 @@ class ChatError(RuntimeError):
 
 
 class ChatTransientError(ChatError):
-    """Proxy failure that may carry a server-provided retry delay."""
+    """Proxy failure that may be retried after a bounded delay."""
 
-    def __init__(self, message, retry_after=None):
+    def __init__(self, message, retry_after=None, *, status_code=None, retryable=True):
         super().__init__(message)
         self.retry_after = retry_after
+        self.status_code = status_code
+        self.retryable = retryable
+
+
+class ChatTerminalError(ChatError):
+    """Proxy failure that a retry cannot repair (bad request or credentials)."""
+
+    def __init__(self, message, *, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retryable = False
+        self.terminal = True
 
 
 class BudgetError(ChatError):
@@ -56,12 +68,20 @@ class ChatClient:
             raise ValueError("LLM_BASE_URL, LLM_API_KEY and LLM_MODEL are required")
         return cls(*(os.environ[name] for name in names), **kwargs)
 
-    def complete(self, messages, *, deadline=None, max_tokens=1800):
+    def complete(self, messages, *, deadline=None, max_tokens=1800,
+                 call_ceiling=None, token_ceiling=None):
         # Byte count is a conservative guard, not a model-token measurement.
         reserve = len(json.dumps(messages, ensure_ascii=False).encode("utf-8")) + max_tokens + 1000
         with self.lock:
             if self.calls >= self.max_calls or self.total_tokens + reserve > self.token_budget:
                 raise BudgetError("Local LLM call/token budget exhausted")
+            # A chat must be checked again at the actual generation call: the
+            # first attempt of a turn can consume the last allowance and the
+            # repair attempt must not cross the reserved official-run budget.
+            if call_ceiling is not None and self.calls >= call_ceiling:
+                raise BudgetError("Chat call allowance exhausted")
+            if token_ceiling is not None and self.total_tokens + reserve > token_ceiling:
+                raise BudgetError("Chat token allowance exhausted")
             wait = max(0, self.last_request + self.min_interval - time.monotonic())
             if deadline is not None and time.monotonic() + wait >= deadline:
                 raise TimeoutError("LLM deadline exceeded")
@@ -86,6 +106,11 @@ class ChatClient:
                     raise ProxyProtocolError("Chat response too large; stop to protect budget")
                 result = json.loads(raw)
         except HTTPError as exc:
+            retryable = exc.code in (408, 429) or 500 <= exc.code <= 599
+            if not retryable:
+                raise ChatTerminalError(
+                    f"Chat proxy HTTP {exc.code}", status_code=exc.code
+                ) from None
             retry_after = None
             header = exc.headers.get("Retry-After") if exc.headers else None
             if header:
@@ -94,7 +119,8 @@ class ChatClient:
                 except ValueError:
                     retry_after = None
             raise ChatTransientError(
-                f"Chat proxy HTTP {exc.code}; no automatic retry", retry_after
+                f"Chat proxy HTTP {exc.code}; no automatic retry",
+                retry_after, status_code=exc.code, retryable=True,
             ) from None
         except (URLError, TimeoutError, HTTPException):
             raise ChatTransientError("Chat proxy unavailable or timed out; no automatic retry") from None
@@ -125,4 +151,5 @@ class ChatClient:
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError("LLM deadline exceeded")
         return {"content": content, "finish_reason": finish_reason,
-                "usage": usage, "seconds": round(time.monotonic() - started, 3)}
+                "usage": usage, "seconds": round(time.monotonic() - started, 3),
+                "wait_seconds": round(wait, 3)}

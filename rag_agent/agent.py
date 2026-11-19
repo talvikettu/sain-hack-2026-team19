@@ -296,7 +296,9 @@ citations — непустой массив объектов {article_id,section
         for attempt in range(self.max_repairs + 1):
             response = self.client.complete(messages, deadline=deadline,
                                             max_tokens=1800 if self.prompt_profile == "compact" else 2500)
-            attempts.append({k: response[k] for k in ("usage", "finish_reason", "seconds")})
+            attempts.append({k: response[k] for k in
+                             ("usage", "finish_reason", "seconds", "wait_seconds")
+                             if k in response})
             validation_started = time.monotonic()
             try:
                 if response["finish_reason"] != "stop":

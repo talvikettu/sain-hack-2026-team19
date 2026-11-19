@@ -29,9 +29,16 @@ Do not put the token or key values into the repository, logs, or chat.
 | `GET /health` | `{"team":"team19","status":"ok"}` |
 | `POST /session` | issue a short-lived browser token for `/chat` |
 | `POST /run` | complete online/final run; fetches `getData` with the incoming Bearer token |
-| `GET /experts` | the three experts from the loaded dataset |
-| `POST /chat` | one interactive client question: `{expert_id, message, session_id?}` |
-| `GET /source/{article_id}/{section_id}` | real article/section text for the source card |
+| `GET /experts` | the three experts and the active `dataset_generation` |
+| `POST /chat` | one interactive client question: `{expert_id, message, session_id?, turn_id?}` |
+| `GET /source/{article_id}/{section_id}?generation=...` | real article/section text for the source card |
+
+`/experts`, `/chat` citations and `/source` include `dataset_generation`. The
+value is derived from the dataset content digest. Send it back to `/source`;
+if a new dataset has been published since the citation was produced, `/source`
+returns `409` instead of showing text from a different corpus. `/run` is
+serialized with other `/run` requests, while `/chat`, `/health`, `/experts` and
+`/source` never wait for the official run.
 
 `/chat` is not public. Call `POST /session` first, then send the returned
 `token` as `Authorization: Bearer <browser-token>` with every `/chat`
@@ -50,7 +57,7 @@ curl -s -X POST http://127.0.0.1:8000/chat \
 This browser token is separate from the organizer `/run` token and
 from the LLM key. The server stores only a SHA-256 hash of it, binds it to the
 active dataset and to a server-selected demo user, and drops it when the
-session expires or a new dataset is loaded. The client cannot send a
+session expires or a different dataset is published. The client cannot send a
 `user_id` or choose another dataset.
 
 `/chat` returns clean prose in `text` and source-card metadata in `citations`.
@@ -60,9 +67,24 @@ server-side; the client cannot choose whose dataset history is sent to the
 model. Chat uses only the current browser session's messages, never the
 dataset's stored `chat_history`. Sessions keep at most 40 messages and
 20,000 characters, the store is capped at 100 sessions, and chat is limited
-to 12 requests/minute per session and 30/minute overall. Before the official
-`/run`, chat is also blocked from using the last 105 calls and 220,000 tokens
-of the process budget.
+to 12 requests/minute per session and 30/minute overall. Session issuance has
+its own 20/minute bucket, so opening a tab never consumes a question. When all
+100 slots are held, only a session idle for at least five minutes is replaced;
+otherwise `/session` returns `503` instead of silently dropping a fresh
+browser. `expires_in` is an idle timeout and an authenticated `/chat` refreshes
+it.
+
+Send an optional `turn_id` with every question. Retrying a lost request with
+the same `turn_id` returns the stored response without another LLM call; using
+the same ID with different content returns `409`. Only one turn per browser
+session generates at a time (a second concurrent turn gets `409`), while
+different browsers and the official run proceed independently. Responses
+include `turn_id` and `dataset_generation`.
+
+Chat is always limited by per-call ceilings: every proxy call re-checks the
+allowed call count and token count atomically inside the client lock. It can
+never spend the calls or tokens reserved for a retry of the official `/run`,
+including after a run has already completed.
 
 `POST /run` returns exactly:
 
@@ -73,6 +95,13 @@ of the process budget.
 
 No extra fields. The token, dataset URL and dataset content are not logged.
 `group_id` is used to keep the citations of a three-expert question identical.
+
+Before anything is indexed or published, `/run` validates every field the
+backend consumes: unique user/expert/article/section/record IDs, non-empty
+section text, known expert personas, timezone-aware timestamps, matching
+request experts, a bounded request count and the input size caps. A contract
+violation returns `502` with only the field path in the log; the dataset
+content is never echoed. The dev dataset validates unchanged.
 
 ## Quota and repeated runs
 
@@ -94,11 +123,24 @@ excludes `reference`, `meta`, the dataset code and the API token. A cache hit
 still calls `getData` with the incoming Bearer token, so access is validated on
 every request.
 
-Only complete runs are cached. If any request used a fallback answer, a group
-needed the local retrieval fallback, hit the deadline or exhausted the local
-budget, the result is returned but not stored. A cache hit still rebuilds and
-activates the requested dataset/index before returning, so `/experts`,
-`/source` and `/chat` never keep a previous dataset.
+Only complete, schema-valid runs are cached. If any request used a fallback
+answer, a group needed the local retrieval fallback, hit the deadline or
+exhausted the local budget, the result is returned but not stored. Every
+generated answer is checked at the backend boundary: exact fields, matching
+`record_id`, non-empty text, boolean `refused`, at least one unique citation
+and only citations that exist in the submitted dataset. A malformed answer
+becomes a counted local fallback; a malformed batch is never cached or
+returned.
+
+The cache has four entries, a 4 MiB per-entry cap and a 16 MiB aggregate cap.
+A same-content `/run` reuses the active runtime, preserving its browser
+sessions and index. A different dataset is downloaded, validated and indexed
+as a candidate; it is published only after the run succeeds or a valid cache
+entry is found. A failed fetch, validation, index build or generation leaves
+the previously active runtime and its `/chat` sessions untouched. Changing the
+dataset content invalidates old browser tokens; the same content does not.
+Content-addressed index files retain the active one and one previous file, so a
+failed build or a rapid dataset switch cannot fill `/tmp`.
 
 A transient LLM failure (timeout, HTTP 429/5xx, unavailable proxy) is retried
 with the configured delays and a server-provided `Retry-After` (capped at
@@ -107,9 +149,14 @@ with the configured delays and a server-provided `Retry-After` (capped at
 disable generation for the rest of the run. Only a confirmed local budget
 stop, an authentication failure (HTTP 401/403), or a malformed proxy response
 whose token usage cannot be accounted for stops further generation; the rest
-of the run is then returned as fallbacks.
-The agent lock, dataset download, index build and generation all share one
-42-minute `/run` deadline, and lock waiting is bounded by it.
+of the run is then returned as fallbacks. Error classification uses typed
+`ChatTerminalError` / `ChatTransientError` status codes, not message text.
+
+The dataset download, index build and generation share one 42-minute `/run`
+deadline, leaving five seconds for response serialization inside the stand's
+45-minute limit. Socket reads are bounded by the remaining deadline, so a
+slow organizer API cannot hold the request forever. A second `/run` returns
+`503` with `Retry-After` immediately instead of waiting behind the first.
 If one group's retrieval fails, `/run` selects a topical section locally
 instead of aborting the whole run.
 
@@ -143,6 +190,23 @@ Cached results live only in the process; a stand restart starts with an empty
 cache. `RUN_CACHE_VERSION` in `main.py` must be bumped when prompts or answer
 logic change in a way that should invalidate old cached answers.
 
+## Concurrency and process model
+
+Run **one** Uvicorn worker. The active runtime, browser sessions, idempotency
+records and the shared LLM counters are process-local; `start.sh` starts one
+worker and the app logs a warning if `WEB_CONCURRENCY` asks for more. Health,
+experts, source lookup and chat are served from the active runtime while an
+official run builds its candidate in the background, so they do not wait for
+the 42-minute run. Admission limits the number of concurrent mutating HTTP
+requests to 16; excess `/run`, `/chat` or `/session` calls receive `503`
+before a worker thread is allocated.
+
+Every response carries `X-Request-ID` (the caller's safe ID or a generated
+16-hex ID). Failure logs contain the request ID, stage (`fetch`, `validate`,
+`build`, `generate`, `commit`, `publish`), elapsed time, and call/token deltas
+for that request. They do not contain dataset codes, tokens, prompts,
+questions, source text or model output.
+
 ## Tests
 
 The automated tests do not call the organizer LLM proxy and spend no team
@@ -159,9 +223,13 @@ safe extractive and refusal fallbacks, unrelated-evidence rejection,
 retrieval-failure recovery, transient LLM recovery, cache hits and runtime
 activation, non-caching of partial runs, the single process-wide client,
 browser-session issuance and ownership, bounded chat storage and rate limits,
-and evidence selection before generation. The tests use synthetic data, plus
-the dev dataset when it is present locally. The dataset and reference files
-are local evaluation material and are not part of the submitted package.
+and evidence selection before generation. It also covers transactional
+candidate publication, same-content runtime reuse, dataset contract rejection,
+backend-side answer validation, per-call chat ceilings, turn idempotency,
+generation-scoped sources, cache size bounds, session issuance limits, request
+IDs and terminal proxy errors. The tests use synthetic data, plus the dev
+dataset when it is present locally. The dataset and reference files are local
+evaluation material and are not part of the submitted package.
 
 An end-to-end contract check can replace the LLM with a local deterministic
 stub and run `scripts/dev_run.py` against it. That verifies the HTTP path,
