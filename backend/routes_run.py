@@ -139,6 +139,7 @@ def run(request: RunRequest, authorization: str | None = Header(default=None)) -
             cache_key is not None
             and context.fallbacks == 0
             and context.retrieval_failures == 0
+            and context.group_citation_failures == 0
             and context.unsupported_fallbacks == 0
             and not context.skip_llm
         )
@@ -156,12 +157,14 @@ def run(request: RunRequest, authorization: str | None = Header(default=None)) -
             state._prune_indexes(candidate.index_path)
         logger.info(
             "run completed: rid=%s requests=%d generated=%d fallbacks=%d unsupported=%d "
-            "retrieval_failures=%d validation_failures=%d transient=%d stopped=%s "
+            "retrieval_failures=%d validation_failures=%d group_citations=%d "
+            "transient=%d stopped=%s "
             "retries=%d run_calls=%d run_tokens=%d calls=%d tokens=%d reused=%s "
             "fetch=%.1fs build=%.1fs retrieval=%.1fs generation=%.1fs total=%.1fs",
             rid, len(result["requests"]), context.generated, context.fallbacks,
             context.unsupported_fallbacks, context.retrieval_failures,
-            context.validation_failures, context.transient_failures, context.skip_llm,
+            context.validation_failures, context.group_citation_failures,
+            context.transient_failures, context.skip_llm,
             context.retries, context.llm_calls, context.llm_tokens,
             calls_used, tokens_used, candidate is None, fetch_seconds, build_seconds,
             context.retrieval_seconds, context.generation_seconds,

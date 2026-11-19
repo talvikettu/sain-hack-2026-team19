@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from typing import Any
@@ -27,10 +28,12 @@ class RunContext:
         self.retrieval_failures = 0
         self.unsupported_fallbacks = 0
         self.validation_failures = 0
+        self.group_citation_failures = 0
         self.transient_failures = 0
         self.consecutive_transient = 0
         self.retries = 0
         self.cooldown_until = 0.0
+        self.retry_not_before = 0.0
         self.cooldown_base = cooldown_base
         self.retrieval_seconds = 0.0
         self.generation_seconds = 0.0
@@ -80,11 +83,29 @@ def _protocol_failure(exc: BaseException) -> bool:
     ))
 
 
-def _note_failure(exc: BaseException, context: RunContext) -> None:
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Return a sane server Retry-After hint, or None when it is unusable."""
+    value = getattr(exc, "retry_after", None)
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
+
+
+def _note_failure(
+    exc: BaseException, context: RunContext, deadline: float | None = None
+) -> None:
     """Stop only on a confirmed budget/auth/protocol stop.
 
     Transient connectivity and per-minute 429 failures use a bounded cooldown
     and a later probe instead of disabling generation for the rest of the run.
+    A provider Retry-After is never shortened: if it reaches past the run
+    deadline, dispatch stops and the remaining records use local fallbacks.
     """
     if (_budget_exhausted(exc) or _protocol_failure(exc)
             or _terminal_error(exc)):
@@ -93,9 +114,20 @@ def _note_failure(exc: BaseException, context: RunContext) -> None:
     if _retryable(exc):
         context.transient_failures += 1
         context.consecutive_transient += 1
-        delay = getattr(exc, "retry_after", None)
-        if delay is None:
-            delay = context.cooldown_base * (2 ** min(context.consecutive_transient - 1, 3))
+        hint = _retry_after_seconds(exc)
+        if hint is not None:
+            earliest = time.monotonic() + hint
+            context.retry_not_before = max(context.retry_not_before, earliest)
+            if deadline is not None and earliest >= deadline:
+                logger.warning(
+                    "provider retry hint exceeds the run deadline; "
+                    "using fallbacks for the remaining records"
+                )
+                context.skip_llm = True
+                return
+            context.cooldown_until = max(context.cooldown_until, earliest)
+            return
+        delay = context.cooldown_base * (2 ** min(context.consecutive_transient - 1, 3))
         delay = min(max(float(delay), 0.0), TRANSIENT_COOLDOWN_MAX_SECONDS)
         context.cooldown_until = max(context.cooldown_until, time.monotonic() + delay)
     elif isinstance(exc, ValueError):
@@ -350,6 +382,40 @@ def _section_pairs(dataset: dict[str, Any]) -> set[tuple[str, str]]:
     }
 
 
+def _validate_evidence(
+    evidence: Any, sections: set[tuple[str, str]]
+) -> tuple[list[dict[str, Any]], bool]:
+    """Reject a malformed dependency evidence envelope at the boundary.
+
+    Returns ``(blocks, well_formed)``. An empty list is well formed: the
+    existing group-local recovery path handles it. A nonempty list is accepted
+    only when every block names an existing source pair, so generation and
+    fallback construction cannot fail on a bad dependency response.
+    """
+    if not isinstance(evidence, list):
+        return [], False
+    if not evidence:
+        return [], True
+    blocks: list[dict[str, Any]] = []
+    for block in evidence:
+        if not isinstance(block, dict):
+            return [], False
+        article_id = block.get("article_id")
+        section_id = block.get("section_id")
+        if not isinstance(article_id, str) or not article_id:
+            return [], False
+        if not isinstance(section_id, str) or not section_id:
+            return [], False
+        if (article_id, section_id) not in sections:
+            return [], False
+        if "text" in block and not isinstance(block["text"], str):
+            return [], False
+        if "metadata" in block and not isinstance(block["metadata"], dict):
+            return [], False
+        blocks.append(block)
+    return blocks, True
+
+
 def _validate_generated_answer(
     answer: Any,
     request: dict[str, Any],
@@ -437,12 +503,11 @@ def _answer_with_retry(
         except (RuntimeError, TimeoutError) as exc:
             if attempt == attempts - 1 or not _retryable(exc):
                 raise
-            delay = getattr(exc, "retry_after", None)
+            delay = _retry_after_seconds(exc)
             if delay is None:
-                delay = context.retry_delays[attempt]
-            # Honour a server-provided Retry-After without letting one request
-            # hold the whole run indefinitely.
-            delay = min(max(float(delay), 0.0), 120.0)
+                # Local backoff stays bounded; a provider hint is honoured as
+                # given so a later call is never sent before recovery time.
+                delay = min(max(float(context.retry_delays[attempt]), 0.0), 120.0)
             if time.monotonic() + delay >= deadline:
                 raise
             context.retries += 1
@@ -469,8 +534,24 @@ def _answer_requests(
         grouped.setdefault(key, []).append(request)
 
     answers: dict[str, dict[str, Any]] = {}
+    deadline_evidence: list[dict[str, Any]] | None = None
     # Process one group at a time: evidence for all groups is not retained.
     for members in grouped.values():
+        if time.monotonic() >= deadline:
+            # The run deadline is exhausted. Do not call retrieval or the
+            # model again: answer every remaining record locally from one
+            # reusable section so the batch stays bounded and schema-valid.
+            if deadline_evidence is None:
+                deadline_evidence = _last_resort_evidence(dataset)
+            if not deadline_evidence:
+                raise RuntimeError("Dataset has no usable article sections for a citation")
+            for request in members:
+                answers[request["record_id"]] = _fallback_answer(
+                    request, deadline_evidence, unsupported=True,
+                )
+                context.fallbacks += 1
+                context.unsupported_fallbacks += 1
+            continue
         failed = False
         unsupported = False
         retrieval_started = time.monotonic()
@@ -480,6 +561,11 @@ def _answer_requests(
             failed = True
             logger.warning("group retrieval failed")
             evidence = []
+        else:
+            evidence, well_formed = _validate_evidence(evidence, sections)
+            if not well_formed:
+                failed = True
+                logger.warning("group retrieval returned malformed evidence")
         if not evidence:
             failed = True
             evidence = _fallback_evidence(dataset, members, agent, deadline)
@@ -496,6 +582,7 @@ def _answer_requests(
             raise RuntimeError("Dataset has no usable article sections for a citation")
 
         ordered = sorted(members, key=lambda item: EXPERT_ORDER.get(item["expert_id"], 99))
+        group_generated: set[str] = set()
         for request in ordered:
             record_id = request["record_id"]
             if not unsupported and not context.skip_llm and time.monotonic() < deadline:
@@ -504,7 +591,6 @@ def _answer_requests(
                 wait = min(
                     max(0.0, context.cooldown_until - time.monotonic()),
                     max(0.0, deadline - time.monotonic()),
-                    TRANSIENT_COOLDOWN_MAX_SECONDS,
                 )
                 if wait > 0:
                     time.sleep(wait)
@@ -525,16 +611,43 @@ def _answer_requests(
                         context.consecutive_transient = 0
                         context.cooldown_until = 0.0
                         answers[record_id] = answer
+                        group_generated.add(record_id)
                         continue
                     except Exception as exc:
                         logger.warning("record failed: %s", type(exc).__name__)
-                        _note_failure(exc, context)
+                        _note_failure(exc, context, deadline)
             answers[record_id] = _fallback_answer(
                 request, evidence, unsupported=unsupported, topical=not unsupported,
             )
             context.fallbacks += 1
             if unsupported:
                 context.unsupported_fallbacks += 1
+
+        # Records sharing an evidence group must cite one shared source set.
+        # A dependency regression that breaks this invariant is repaired inside
+        # the group instead of failing the whole batch at final validation.
+        if len(members) > 1:
+            signatures = {
+                frozenset(
+                    (citation["article_id"], citation["section_id"])
+                    for citation in answers[request["record_id"]]["citations"]
+                )
+                for request in members
+            }
+            if len(signatures) > 1:
+                context.group_citation_failures += 1
+                logger.warning("group citations disagreed; using the shared group fallback")
+                for request in members:
+                    record_id = request["record_id"]
+                    if record_id in group_generated:
+                        context.generated -= 1
+                        context.fallbacks += 1
+                        if unsupported:
+                            context.unsupported_fallbacks += 1
+                    answers[record_id] = _fallback_answer(
+                        request, evidence,
+                        unsupported=unsupported, topical=not unsupported,
+                    )
     return _validate_run_result(
         dataset, {"requests": [answers[record_id] for record_id in record_ids]}
     )

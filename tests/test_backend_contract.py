@@ -219,6 +219,59 @@ class RunContractTests(unittest.TestCase):
         self.assertEqual(context.consecutive_transient, 0)
         self.assertEqual(context.generated, 2)
 
+    def test_retry_after_beyond_deadline_stops_remaining_dispatch(self):
+        dataset = _dataset()
+
+        class LongThrottleAgent(_FakeAgent):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def answer(self, question, expert_id, **kwargs):
+                self.attempts += 1
+                raise ChatTransientError(
+                    "Chat proxy HTTP 429", retry_after=600.0, status_code=429,
+                )
+
+        agent = LongThrottleAgent()
+        context = answering.RunContext(retry_delays=(0,))
+        result = answering._answer_requests(
+            agent, dataset, time.monotonic() + 30, context
+        )
+        self.assertEqual(agent.attempts, 1)
+        self.assertTrue(context.skip_llm)
+        self.assertEqual(context.retries, 0)
+        self.assertEqual(context.fallbacks, 3)
+        self.assertTrue(all(answer["citations"] for answer in result["requests"]))
+
+    def test_provider_retry_after_is_not_shortened(self):
+        dataset = _dataset()
+
+        class OnceThrottledAgent(_FakeAgent):
+            def __init__(self):
+                super().__init__()
+                self.attempts = 0
+
+            def answer(self, question, expert_id, **kwargs):
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise ChatTransientError(
+                        "Chat proxy HTTP 429", retry_after=0.05, status_code=429,
+                    )
+                return super().answer(question, expert_id, **kwargs)
+
+        agent = OnceThrottledAgent()
+        context = answering.RunContext(retry_delays=(0,))
+        started = time.monotonic()
+        result = answering._answer_requests(
+            agent, dataset, time.monotonic() + 30, context
+        )
+        self.assertGreaterEqual(time.monotonic() - started, 0.05)
+        self.assertEqual(context.retries, 1)
+        self.assertEqual(context.generated, 3)
+        self.assertEqual(agent.attempts, 4)
+        self.assertTrue(all(answer["citations"] for answer in result["requests"]))
+
     def test_local_budget_exhaustion_is_not_retried(self):
         dataset = _dataset()
         agent = _FakeAgent(
@@ -319,6 +372,107 @@ class RunContractTests(unittest.TestCase):
         self.assertEqual(context.fallbacks, 3)
         self.assertTrue(all(item["refused"] for item in result["requests"]))
         self.assertTrue(all(item["citations"] for item in result["requests"]))
+
+    def test_malformed_middle_group_does_not_abort_the_batch(self):
+        dataset = _dataset()
+        template = dataset["requests"][0]
+        dataset["requests"] = [
+            {**json.loads(json.dumps(template)), "record_id": f"r{i}", "group_id": f"g{i}"}
+            for i in range(3)
+        ]
+
+        class MiddleGroupAgent(_FakeAgent):
+            def __init__(self, bad_evidence):
+                super().__init__()
+                self.bad_evidence = bad_evidence
+                self.prepared = 0
+
+            def prepare_group(self, members, *, deadline=None):
+                self.prepared += 1
+                if self.prepared == 2:
+                    return self.bad_evidence
+                return [{"article_id": "art_01", "section_id": "s001"}]
+
+        for bad_evidence in (
+            [{"article_id": "art_01"}],
+            [{"article_id": "art_99", "section_id": "s999"}],
+            {"article_id": "art_01", "section_id": "s001"},
+        ):
+            with self.subTest(bad_evidence=bad_evidence):
+                agent = MiddleGroupAgent(bad_evidence)
+                context = answering.RunContext(retry_delays=())
+                result = answering._answer_requests(
+                    agent, dataset, time.monotonic() + 60, context
+                )
+                self.assertEqual(len(result["requests"]), 3)
+                self.assertEqual(context.retrieval_failures, 1)
+                self.assertEqual(context.generated, 2)
+                self.assertEqual(context.fallbacks, 1)
+                self.assertTrue(all(answer["citations"] for answer in result["requests"]))
+
+    def test_group_citation_disagreement_is_repaired_locally(self):
+        dataset = _dataset()
+        dataset["articles"].append({
+            "article_id": "art_02",
+            "title": "Evening light",
+            "authors": ["Test Author"],
+            "year": 2026,
+            "doi": "10.0000/light",
+            "license": {"name": "CC BY", "version": "4.0", "url": "https://example.test"},
+            "sections": [
+                {"section_id": "s002", "title": "Results", "text": "Evening light can delay sleep."}
+            ],
+        })
+
+        class DisagreeingAgent(_FakeAgent):
+            def answer(self, question, expert_id, **kwargs):
+                self.calls.append(expert_id)
+                article_id, section_id = (
+                    ("art_02", "s002") if expert_id == "biohacker" else ("art_01", "s001")
+                )
+                return {"answer": {
+                    "record_id": kwargs["record_id"],
+                    "text": f"Answer [{article_id} / {section_id}]",
+                    "refused": False,
+                    "citations": [{"article_id": article_id, "section_id": section_id}],
+                }}
+
+        agent = DisagreeingAgent()
+        context = answering.RunContext(retry_delays=())
+        result = answering._answer_requests(
+            agent, dataset, time.monotonic() + 60, context
+        )
+        self.assertEqual(context.group_citation_failures, 1)
+        self.assertEqual(context.generated, 0)
+        self.assertEqual(context.fallbacks, 3)
+        self.assertEqual(
+            [answer["citations"] for answer in result["requests"]],
+            [[{"article_id": "art_01", "section_id": "s001"}]] * 3,
+        )
+
+    def test_expired_deadline_skips_retrieval_and_generation(self):
+        dataset = _dataset()
+
+        class TrackingAgent(_FakeAgent):
+            def __init__(self):
+                super().__init__()
+                self.prepared = 0
+
+            def prepare_group(self, members, *, deadline=None):
+                self.prepared += 1
+                return super().prepare_group(members, deadline=deadline)
+
+        agent = TrackingAgent()
+        context = answering.RunContext(retry_delays=())
+        result = answering._answer_requests(
+            agent, dataset, time.monotonic() - 1, context
+        )
+        self.assertEqual(agent.prepared, 0)
+        self.assertEqual(agent.calls, [])
+        self.assertEqual(context.fallbacks, 3)
+        self.assertEqual(context.unsupported_fallbacks, 3)
+        self.assertTrue(all(answer["refused"] for answer in result["requests"]))
+        self.assertTrue(all(answer["citations"] for answer in result["requests"]))
 
     def test_empty_group_evidence_uses_topical_fallback(self):
         dataset = _dataset()
