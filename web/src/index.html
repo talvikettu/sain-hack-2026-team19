@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0b0a">
+  <title>SAIN — твой эксперт по сну</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <svg aria-hidden="true" class="icon-library" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-clinician" viewBox="0 0 24 24"><path d="M20 14a8.5 8.5 0 0 1-10-10A8.5 8.5 0 1 0 20 14Z"/><path d="M17 3v5m-2.5-2.5h5"/></symbol>
+    <symbol id="icon-biohacker" viewBox="0 0 24 24"><path d="M3 20h6v-6h6V8h6V3"/></symbol>
+    <symbol id="icon-nutritionist" viewBox="0 0 24 24"><path d="M20 3C10 3 4 7 4 13a6 6 0 0 0 6 6c6 0 10-6 10-16Z"/><path d="M3 22 15 10"/></symbol>
+    <symbol id="icon-expert" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+    <symbol id="icon-send" viewBox="0 0 24 24"><path d="M12 20V4m-7 7 7-7 7 7"/></symbol>
+  </svg>
+  <main class="shell">
+    <section id="selection" aria-labelledby="selection-title">
+      <header class="selection-header"><span class="brand">sain</span><span class="pill">Экспертное<br>сообщество</span><span class="sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" pathLength="8" fill="none" stroke="currentColor" stroke-width="4" stroke-dasharray=".01 .99" stroke-linecap="round"/></svg></span></header>
+      <h1 id="selection-title" tabindex="-1">Выбери своего эксперта</h1>
+      <p class="intro">Каждый эксперт по-своему интерпретирует одну и ту же доказательную базу.</p>
+      <div id="connection" class="connection" role="status"></div>
+      <button id="reload" class="quiet" hidden>Проверить подключение</button>
+      <div id="experts" class="expert-list"></div>
+      <footer class="selection-footer">Проверенные эксперты. Общие доказательства. Разные подходы.</footer>
+    </section>
+    <section id="conversation" aria-labelledby="chat-title" hidden>
+      <header class="chat-header"><button id="back" class="expert-symbol" aria-label="К выбору эксперта"></button><div><h1 id="chat-title"></h1><button id="choose" class="back-link">К выбору эксперта</button></div><button id="new-chat" class="quiet new-chat">Новый<br>диалог</button></header>
+      <div class="chat-content">
+        <div id="messages" role="log" aria-label="Сообщения"></div>
+        <div id="suggestions" class="suggestions"></div>
+      </div>
+      <div class="composer-area">
+        <p id="chat-error" role="alert" class="error" hidden></p>
+        <form id="composer"><label class="sr-only" for="question">Задайте вопрос эксперту</label><textarea id="question" placeholder="Задайте вопрос…" rows="1" maxlength="12000" required></textarea><button id="send" class="send" type="submit" aria-label="Отправить вопрос"><svg class="icon" aria-hidden="true"><use href="#icon-send"/></svg></button></form>
+        <p class="disclaimer">Беседа с экспертом · Не является медицинским назначением</p>
+      </div>
+    </section>
+  </main>
+  <dialog id="source-dialog" aria-labelledby="source-title"><div class="dialog-header"><span class="eyebrow">ИСТОЧНИК ОТВЕТА</span><button id="close-source" class="quiet" aria-label="Закрыть источник">Закрыть ×</button></div><h2 id="source-title">Источник</h2><div id="source-body" aria-live="polite"></div></dialog>
+</body>
+</html>

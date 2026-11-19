@@ -2,11 +2,14 @@
 
 This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
 
+The web client is a first test version. Run it separately for local testing with `node web/scripts/dev.mjs`.
+
 The application answers sleep-related questions through three fictional experts: a clinical sleep specialist (`clinician`), an experimental biohacker (`biohacker`), and a common-sense nutritionist (`nutritionist`). Answers must rely on the organizer-provided articles and include original article/section references.
 
 ## Start here
 
 - **Configure the HTTP backend:** [Backend guide](docs/BACKEND.md).
+- **Run the test web client:** [Frontend guide (RU)](web/README.md).
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
 - **Read the end-to-end architecture and latest changes:** [RAG system guide](docs/RAG_SYSTEM.md).
 - **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
@@ -24,6 +27,7 @@ This navigation page is in English. Most detailed project documents and example 
 | [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
 | [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
 | [`backend/`](backend/) | FastAPI routes, runtime state, organizer access, run cache, and chat sessions. `main.py` is the `uvicorn main:app` entrypoint. |
+| [`web/`](web/) | First test version of the web client, with a local API proxy and client tests. |
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
 | [`data/`](data/) | Organizer dev dataset, reference labels, and API schemas for offline development. Git archives for the stand omit this directory. |
 | [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |
