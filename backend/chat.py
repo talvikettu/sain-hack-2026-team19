@@ -474,5 +474,3 @@ def chat(request: ChatRequest,
         with runtime.sessions_lock:
             runtime.inflight_turns.pop(turn_key, None)
             runtime.busy_sessions.discard(session_id)
-
-

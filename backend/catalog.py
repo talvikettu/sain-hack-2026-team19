@@ -52,5 +52,3 @@ def source(article_id: str, section_id: str,
         "license": article["license"],
         "dataset_generation": runtime.generation,
     }
-
-

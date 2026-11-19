@@ -20,5 +20,3 @@ class ChatRequest(BaseModel):
     turn_id: str | None = Field(
         default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
     )
-
-

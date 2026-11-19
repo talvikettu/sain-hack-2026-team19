@@ -2,3 +2,4 @@
 data/ export-ignore
 output/ export-ignore
 tmp/ export-ignore
+start.sh text eol=lf

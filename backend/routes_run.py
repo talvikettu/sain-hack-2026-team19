@@ -172,5 +172,3 @@ def run(request: RunRequest, authorization: str | None = Header(default=None)) -
         return JSONResponse(content=result, headers={"Cache-Control": "no-store"})
     finally:
         state._run_lock.release()
-
-

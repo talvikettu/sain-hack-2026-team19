@@ -252,5 +252,3 @@ def _fetch_dataset(dataset_code: str, authorization: str, timeout: float = 120) 
     if not isinstance(payload, dict) or not isinstance(payload.get("requests"), list):
         raise RuntimeError("unexpected dataset response")
     return payload
-
-
