@@ -1,11 +1,13 @@
 # Sain Hackathon — Case 4: Expert as a Playlist
 
-This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
+This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, a web client, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
 
 The application answers sleep-related questions through three fictional experts: a clinical sleep specialist (`clinician`), an experimental biohacker (`biohacker`), and a common-sense nutritionist (`nutritionist`). Answers must rely on the organizer-provided articles and include original article/section references.
 
 ## Start here
 
+- **Run or build the frontend:** [Frontend guide (RU)](web/README.md).
+- **Configure the HTTP backend:** [Backend guide](docs/BACKEND.md).
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
 - **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
 - **Run the agent on example questions:** [Agent guide](rag_agent/README.md).
@@ -24,6 +26,7 @@ This navigation page is in English. Most detailed project documents and example 
 | [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
 | [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
 | [`backend/`](backend/) | FastAPI routes, runtime state, organizer access, run cache, and chat sessions. `main.py` is the `uvicorn main:app` entrypoint. |
+| [`web/`](web/) | Dependency-free mobile web client. `web/src/` is the source and the committed `web/dist/` build is served by FastAPI at `/`. |
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
 | [`data/`](data/) | Organizer dev materials: articles, expert descriptions, example requests, history, and API schemas. Local evaluation dumps are kept out of Git. |
 | [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |
@@ -151,7 +154,7 @@ These checks do not mean that every answer is correct. The manual review found s
 
 ## Integration and hosting limits
 
-This branch includes the FastAPI backend, `/run`, `/chat`, and the stand entrypoint. See the [backend guide](docs/BACKEND.md) for routes, deployment settings, and quota handling.
+This branch includes the FastAPI backend with `/run`, `/session`, `/experts`, `/chat`, and `/source/{article_id}/{section_id}`, plus a web client in `web/`. The committed `web/dist/` build is served by FastAPI at `/`; rebuild it after client changes and restart the backend. See the [backend guide](docs/BACKEND.md) for routes, deployment settings and quota handling, and the [frontend guide](web/README.md) for client development. Deployment is not performed by creating this branch.
 
 `POST /run` receives `{"case": 4, "dataset_code": "..."}`, downloads
 `getData` once with the incoming organizer Bearer token, validates the dataset
