@@ -1,6 +1,6 @@
 # Sain Hackathon — Case 4: Expert as a Playlist
 
-This branch (`dinoden`) contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
+This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
 
 The application answers sleep-related questions through three fictional experts: a clinical sleep specialist (`clinician`), an experimental biohacker (`biohacker`), and a common-sense nutritionist (`nutritionist`). Answers must rely on the organizer-provided articles and include original article/section references.
 
@@ -23,6 +23,7 @@ This navigation page is in English. Most detailed project documents and example 
 | [`prompts/`](prompts/) | Original system and expert prompts, plus the compact runtime system prompt. |
 | [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
 | [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
+| [`backend/`](backend/) | FastAPI routes, runtime state, organizer access, run cache, and chat sessions. `main.py` is the `uvicorn main:app` entrypoint. |
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
 | [`data/`](data/) | Organizer dev materials: articles, expert descriptions, example requests, history, and API schemas. Local evaluation dumps are kept out of Git. |
 | [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |

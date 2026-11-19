@@ -3,6 +3,27 @@
 FastAPI app for the stand. The organizer contract is `team19/README.md`; the
 answer format is `Case4Answers.schema.json`.
 
+## Code layout
+
+`main.py` is only the stable Uvicorn entrypoint (`uvicorn main:app`). The
+implementation lives in `backend/`:
+
+| Module | Responsibility |
+|---|---|
+| `backend/config.py` | environment limits, deadlines, cache and dataset caps |
+| `backend/state.py` | active runtime registry, index lifecycle, shared LLM client |
+| `backend/organizer.py` | `getData` download, socket deadlines, dataset contract validation |
+| `backend/cache.py` | content-addressed completed-run cache |
+| `backend/answering.py` | retrieval, retry policy, fallbacks, output validation |
+| `backend/chat.py` | browser sessions, quota ceilings, idempotent turns, `/session` and `/chat` |
+| `backend/routes_run.py` | official `/run` handler and transactional publication |
+| `backend/catalog.py` | `/experts` and `/source` |
+| `backend/app.py` | FastAPI assembly, admission middleware, health and static client |
+
+Tests patch the owning module (`backend.state`, `backend.chat`, …) instead of
+`main`. Move a function only together with the state it owns; runtime, sessions
+and quota counters must stay process-local.
+
 ## Run locally
 
 ```bash
@@ -149,8 +170,9 @@ with the configured delays and a server-provided `Retry-After` (capped at
 disable generation for the rest of the run. Only a confirmed local budget
 stop, an authentication failure (HTTP 401/403), or a malformed proxy response
 whose token usage cannot be accounted for stops further generation; the rest
-of the run is then returned as fallbacks. Error classification uses typed
-`ChatTerminalError` / `ChatTransientError` status codes, not message text.
+of the run is then returned as fallbacks. The proxy client classifies failures
+with typed `ChatTerminalError` / `ChatTransientError` status codes; message
+checks remain only as a fallback for non-client errors.
 
 The dataset download, index build and generation share one 42-minute `/run`
 deadline, leaving five seconds for response serialization inside the stand's
@@ -187,8 +209,8 @@ is counted as `unsupported` in the run log. That group is never sent to the
 model with unrelated evidence. Fallbacks do not spend LLM calls.
 
 Cached results live only in the process; a stand restart starts with an empty
-cache. `RUN_CACHE_VERSION` in `main.py` must be bumped when prompts or answer
-logic change in a way that should invalidate old cached answers.
+cache. `RUN_CACHE_VERSION` in `backend/config.py` must be bumped when prompts
+or answer logic change in a way that should invalidate old cached answers.
 
 ## Concurrency and process model
 
