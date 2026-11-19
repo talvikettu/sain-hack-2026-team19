@@ -79,7 +79,7 @@ Structural validation confirms that citations belong to the supplied evidence. I
 
 The existing backend and CLI use `RAGAgent.answer()`. The standalone `AsyncRAGAgent` adds awaitable `prepare()`, `prepare_group()`, and `answer()` with the same prompt and completion logic. The default compatibility adapter uses one worker for SQLite preparation and validation and one for the existing blocking proxy client. Retrieval can progress while a model call waits. An injected async provider can be used instead, with its own quota policy and configurable concurrency.
 
-The standalone async agent bounds admission and applies a monotonic deadline while waiting for work slots. Cancellation stops the caller waiting for a blocking operation. That operation holds its slot until it actually finishes. Use the adapter inside its async context manager. A [usage example](../rag_agent/README.md) is available in the agent guide. The HTTP routes in this branch still use the synchronous interface, so these changes do not establish concurrent backend throughput.
+The standalone async agent bounds admission and applies a monotonic deadline while waiting for work slots. Cancellation stops the caller waiting for a blocking operation. That operation holds its slot until it actually finishes. Use the adapter inside its async context manager. The HTTP routes use the synchronous interface.
 
 ## Reproduce the checks
 

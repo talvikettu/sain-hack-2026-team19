@@ -1,166 +1,121 @@
-# Sain Hackathon — Case 4: Expert as a Playlist
+# Sain × Школа 21. Кейс 4 «Эксперт как плейлист»
 
-This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
+Сомнолог-клиницист, биохакер-экспериментатор и нутрициолог отвечают на вопросы о сне. Ответы опираются на статьи организаторов и содержат ссылки на конкретные разделы. Источники общие, а тон и способ объяснения зависят от эксперта.
 
-The web client is a first test version. Run it separately for local testing with `node web/scripts/dev.mjs`.
+## 1. Запуск
 
-The application answers sleep-related questions through three fictional experts: a clinical sleep specialist (`clinician`), an experimental biohacker (`biohacker`), and a common-sense nutritionist (`nutritionist`). Answers must rely on the organizer-provided articles and include original article/section references.
+### Серверная часть на стенде
 
-## Start here
+1. Убедитесь, что в GitHub-репозитории команды включены Actions. Workflow уже находится в [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+2. В **Settings → Secrets and variables → Actions → New repository secret** добавьте `STAND_SSH_KEY`. Вставьте полное содержимое файла `id_ed25519` из локального набора `team19`, включая строку начала и строку конца ключа. Остальные переменные для API и LLM выдаёт стенд. Ключи и токены хранятся вне репозитория.
+3. Выполните эту команду из корня проекта, чтобы отправить готовый коммит ветки `main`.
 
-- **Configure the HTTP backend:** [Backend guide](docs/BACKEND.md).
-- **Run the test web client:** [Frontend guide (RU)](web/README.md).
-- **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
-- **Read the end-to-end architecture and latest changes:** [RAG system guide](docs/RAG_SYSTEM.md).
-- **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
-- **Run the agent on example questions:** [Agent guide](rag_agent/README.md).
-- **Check retrieval coverage:** [Offline retrieval check](#offline-retrieval-check).
-- **Understand the token optimizations:** [Optimization notes](docs/RAG_TOKEN_OPTIMIZATION_RU.md).
+   ```sh
+   git push origin main
+   ```
 
-This navigation page is in English. Most detailed project documents and example conversations are currently in Russian.
+   GitHub Actions отправит архив коммита на стенд. Стенд установит зависимости из [`requirements.txt`](requirements.txt) в Python 3.11 и запустит сервер командой `sh start.sh`. [`start.sh`](start.sh) запускает один процесс Uvicorn на `0.0.0.0` и порту из `PORT`. Стенд передаёт `HACK_API_URL`, `HACK_TEAM_TOKEN`, `LLM_BASE_URL`, `LLM_API_KEY` и `LLM_MODEL` через окружение.
+4. В **Actions** дождитесь строки `OK: sha=…` и сверьте SHA с `git rev-parse main`. До начала онлайн-показа проверьте [`/health` на стенде team19](https://team19.hack.be-healthy.tech/health). Для повторного деплоя уже опубликованной версии можно выбрать **Run workflow** во вкладке **Actions**.
+5. Для онлайн-показа отправьте SHA развёрнутого коммита через [форму онлайн-показа](https://forms.yandex.ru/u/6af9c3b597a37795c5e8da0e). В поле «Секрет команды» используйте значение из `team19/yandex_forms_secret.txt`. Срок сдачи и закрытия деплоя — **20 ноября, 12:00 МСК**.
 
-## Repository map
+На онлайн-показе стенд сам вызывает `POST /run`. Сервер загружает набор по коду и Bearer-токену входящего запроса и возвращает весь результат в том же HTTP-ответе. `GET /` и `GET /health` возвращают JSON-статус. Архитектура, API и лимиты описаны в [документации бэкенда](docs/BACKEND.md).
 
-| Directory | Contents |
-|---|---|
-| [`prompts/`](prompts/) | Compact system and expert prompts, plus the original full versions. |
-| [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
-| [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
-| [`backend/`](backend/) | FastAPI routes, runtime state, organizer access, run cache, and chat sessions. `main.py` is the `uvicorn main:app` entrypoint. |
-| [`web/`](web/) | First test version of the web client, with a local API proxy and client tests. |
-| [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
-| [`data/`](data/) | Organizer dev dataset, reference labels, and API schemas for offline development. Git archives for the stand omit this directory. |
-| [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |
-| [`output/pdf/`](output/pdf/) | Russian and English technical-constraints PDFs. |
-| `team19/` | Local organizer kit, including credentials and deployment templates. Ignored by Git; never commit this directory or secret values copied from it. |
-| `tmp/` | Generated indexes, previews, temporary scripts, and local run results. Ignored by Git. |
+### Первый тестовый вариант клиента
 
-The original case specification is available as a PDF in the repository root.
+Клиент запускается отдельно от FastAPI. Для локальной проверки нужны Python 3.11 и Node.js 18 или новее. У веб-клиента нет npm-зависимостей.
 
-### Prompts
+1. В первом терминале из корня репозитория установите зависимости бэкенда.
 
-| File | Purpose |
-|---|---|
-| [`system_compact.md`](prompts/system_compact.md) | Default runtime rules: grounding, medical boundaries, numbered citations, and compact JSON output. |
-| [`system.md`](prompts/system.md) | Original detailed system prompt, retained for the `full` profile and comparison. |
-| [`somnologist.md`](prompts/somnologist.md) | Original clinical sleep specialist metaprompt; corresponds to expert ID `clinician`. |
-| [`biohacker.md`](prompts/biohacker.md) | Original experimental biohacker metaprompt. |
-| [`nutritionist.md`](prompts/nutritionist.md) | Original common-sense nutritionist metaprompt. |
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
 
-The default `compact` profile combines `system_compact.md` with one local expert prompt selected by `expert_id`. The compact role files follow the organizer's descriptions in `data/experts/`. The `full` profile retains the original persona files and earlier prompt assembly.
+2. В том же терминале задайте адреса и модель из набора команды. Укажите путь к локальной папке `team19`, если она лежит вне текущей копии репозитория. Для клиентского теста используйте dev-набор.
 
-### Dev materials
+   ```powershell
+   $teamKit = 'team19'
+   $env:HACK_API_URL = 'https://hack-api.be-healthy.tech'
+   $env:HACK_TEAM_TOKEN = (Get-Content -LiteralPath (Join-Path $teamKit 'api.token') -Raw).Trim()
+   $env:LLM_BASE_URL = 'https://bifrost.be-healthy.tech/v1'
+   $env:LLM_API_KEY = (Get-Content -LiteralPath (Join-Path $teamKit 'llm.key') -Raw).Trim()
+   $env:LLM_MODEL = 'gpt-6-luna'
+   $env:DEV_DATASET_CODE = 'case4-dev-v2'
+   New-Item -ItemType Directory -Force tmp | Out-Null
+   $env:CASE4_INDEX_PATH = Join-Path $PWD 'tmp/case4-index.sqlite3'
+   python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+   ```
 
-See [the data guide](data/README.md) for the complete inventory. Key inputs are:
+3. Во втором терминале из корня проекта запустите клиент.
 
-- [`articles.json`](data/articles.json): 20 articles with 609 original sections in the current dev corpus.
-- [`experts.json`](data/experts.json): the three official fictional expert descriptions.
-- [`requests.json`](data/requests.json): 60 original example requests, including target expert IDs.
-- [`chat_history.json`](data/chat_history.json): available user conversation history.
-- [`schemas/`](data/schemas/): organizer JSON schemas.
+   ```powershell
+   node web/scripts/dev.mjs
+   ```
 
-`data/dataset.json`, `data/reference.json`, and `data/raw/case4-dev-v2.json`
-are the organizer's dev fixtures. Use reference labels only to score the
-results of offline checks. The deployment archive excludes `data/`.
+   Откройте [http://127.0.0.1:5173](http://127.0.0.1:5173) в браузере. Node.js раздаёт файлы из `web/src/` и проксирует клиентские запросы к `http://127.0.0.1:8000`. Если локальный бэкенд работает на другом порту, перед запуском задайте `BACKEND_URL` с его HTTP-адресом.
 
-## Processing flow
+В клиенте можно выбрать эксперта, отправить вопрос и раскрыть карточку источника. При первом запросе к API бэкенд загружает dev-набор. Вопросы в чате расходуют общую квоту LLM.
 
-```text
-Articles → parsing/cleaning → sections or smaller chunks → metadata → search index
+### Локальные проверки
 
-Question + expert_id
-    → relevant user history, when needed
-    → BM25 retrieval and evidence selection
-    → compact rules + local expert prompt + evidence + question
-    → organizer LLM proxy
-    → JSON/reference validation
-    → answer with article_id / section_id citations
-```
-
-The preprocessing package supports optional remote embeddings and hybrid retrieval. The current compact profile uses **local SQLite/BM25**. It combines the original question with topic-specific searches and preserves the options and constraints in comparisons where recognized. The reranker favors relevant sections with findings or conclusions. Embedding access must be confirmed and explicitly configured; no model weights are downloaded.
-
-## Offline retrieval check
-
-The offline check processed **60 dev requests across 20 groups**. It found **183 of 183 allowed request–article pairs** in the candidate pool, with complete coverage for **60 of 60 requests**. It selected an allowed source for **60 of 60 requests**. These are pairs from the organizer's dev reference, not 183 distinct articles. The reference is used only to score retrieval after the search.
-
-| Metric | Before the wider search | Current |
-|---|---:|---:|
-| Allowed request–article pairs found | 153/183 | **183/183** |
-| Requests with every allowed article in the candidate pool | 42/60 | **60/60** |
-| Requests with an allowed article selected for the prompt | 60/60 | **60/60** |
-
-The wider search collects up to **40 fragments per main query** and reranks the first **20**. Supplementary searches expand coverage for sleep timing and evening light. A focused sleep-hygiene query adds up to **10** candidates for schedule questions.
-
-The **`/run`** path sends **one shared section** to the experts in a group and returns the organizer's citation fields. **`/chat`** can use up to three fragments within the compact context budget and returns source-card metadata separately from the displayed text. Compact output checks cover citation structure, external links, HTML, direct appeals to the evaluator, and long verbatim copies of system instructions. These checks do not measure medical correctness or resistance to all prompt injections.
-
-Reproduce the retrieval check without credentials or model calls:
+Выполните команды из корня проекта.
 
 ```powershell
-python scripts/evaluate_retrieval.py --output tmp/retrieval_evaluation
-```
-
-The script saves a local Markdown table and JSON with allowed, found, and missing articles for each request, plus the selected section. These results measure dev retrieval coverage. Generation quality and performance on the closed organizer dataset remain unmeasured by this check.
-
-## Quick start
-
-Run commands from the repository root with Python 3.11 or newer. Install the backend dependencies once with `pip install -r requirements.txt`; for the test suite use `pip install -r requirements-dev.txt` (it includes the runtime requirements and `httpx2` for FastAPI's test client). The preprocessing and agent CLI commands below otherwise use the Python standard library.
-
-### 1. Run tests — no API calls
-
-```powershell
+python -m pip install -r requirements-dev.txt
+New-Item -ItemType Directory -Force tmp | Out-Null
+$env:CASE4_INDEX_PATH = Join-Path $PWD 'tmp/case4-test-index.sqlite3'
 python -m unittest discover -s tests -v
+node --test web/tests/api.test.mjs
+node web/scripts/build.mjs
 ```
 
-### 2. Build a local index
+Тесты используют заглушки для внешних вызовов. Команда сборки копирует клиент в локальный каталог `web/dist/`. Для проверки формата организаторами отправьте полный JSON-ответ `POST /run` на dev-наборе в `POST /case/4/validate` с командным токеном. Успешная проверка возвращает `"valid": true`.
+
+Для проверки поиска без LLM используйте локальные материалы из `data/`.
 
 ```powershell
+python data/verify_data.py
 python -m rag_preprocessing build --input data/articles.json --output tmp/rag/index.sqlite3
+python scripts/evaluate_retrieval.py --output tmp/retrieval_evaluation
+python -m rag_agent --profile compact --limit 10 --dry-run --output tmp/rag_preview
 ```
 
-For additional sentence-based splitting, add `--mode structural`. See the preprocessing guide for chunk sizes, overlap, optional semantic splitting, and embedding configuration.
+Архитектура и настройки описаны в технической документации. [Предобработка и поиск](docs/RAG_PREPROCESSING_PIPELINE_RU.md) · [RAG-агент](docs/RAG_SYSTEM.md) · [Профили промптов](docs/RAG_TOKEN_OPTIMIZATION_RU.md)
 
-### 3. Preview the first 10 requests — no API calls
+## 2. Роли
 
-```powershell
-python -m rag_agent --limit 10 --dry-run --profile compact --output tmp/rag_preview
-```
+| Участник | Роль | Вклад |
+| --- | --- | --- |
+| **Unellase** | Data Scientist | Участвовал в разработке RAG-агента и подборе промптов для LLM. Работал над тем, как эксперт получает доказательные фрагменты и использует их в ответах. |
+| **Speedycu** | Team Lead, Data Scientist | Координировал работу команды и интеграцию компонентов. Участвовал в разработке RAG-агента и промптов. Руководил созданием первого тестового фронтенда с помощью ИИ. |
+| **Lanellec** | Backend, DevOps | Разработал серверную часть, интеграцию с API организаторов и обработку `/run`. Настроил запуск сервера и деплой на стенд через GitHub Actions. |
+| **Chambram** | UI/UX-дизайнер | Разработал в Figma дизайн клиентского интерфейса, включая выбор эксперта и экран диалога. |
 
-Inspect `tmp/rag_preview/preview.json` locally. It contains the prepared prompts and evidence, without credentials. Use `--limit 60` to prepare all dev requests without spending LLM tokens.
+## 3. ИИ
 
-### 4. Run the first 10 questions against the LLM
+Команда использовала **Codex, ChatGPT и DeepSeek** как помощников при разработке бэкенда, RAG, промптов, тестов и документации. Участники формулировали требования, выбирали подходы, принимали технические решения и отвечали за интеграцию.
 
-Configure `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in the environment using the organizer-issued settings. Keep actual credentials out of commands shared in chat, source files, and reports.
+Код первого тестового фронтенда полностью сгенерирован ИИ по требованиям команды и дизайну Chambram. Speedycu направлял работу над клиентом и включил его в решение.
 
-```powershell
-python -m rag_agent --limit 10 --profile compact --token-budget 60000 --output tmp/rag_demo_new
-```
+Во время работы приложения генерация ответов идёт через прокси организаторов. Имя модели берётся из `LLM_MODEL`.
 
-This command consumes the team's shared LLM quota. Select a new output directory: the CLI refuses to overwrite an existing run. Results are checkpointed after each question as `report.md`, `run.json`, and `answers.json`. On the first error, the run stops and preserves partial results.
+## 4. Источники
 
-## Integration and hosting limits
+Весь код решения разработан с начала хакатона **16 ноября 2026 года**. Команда не использовала свои ранее опубликованные решения или готовые решения других команд.
 
-FastAPI returns JSON health status at `/` and `/health`. The [backend guide](docs/BACKEND.md) lists the API routes, deployment settings, and quota limits.
+- **Данные кейса.** Организаторы предоставили 20 статей о сне, описания трёх вымышленных экспертов и набор для разработки. Статьи распространяются по CC BY. Авторы, DOI и точная версия лицензии указаны в карточках статей. Рабочий бэкенд получает набор через API организаторов. Эталон используется для локальной оценки поиска. [Оглавление статей](data/ARTICLES_INDEX.md) · [Описание API кейса](data/API_CASE4.md)
+- **Сторонний код.** Сервер использует FastAPI (MIT) и Uvicorn (BSD-3-Clause). Они устанавливаются как зависимости. [Список зависимостей](requirements.txt)
+- **Инфраструктура.** Workflow опирается на шаблон GitHub Actions из набора команды, предоставленный организаторами для хакатона. [Workflow деплоя](.github/workflows/deploy.yml)
+- **Дизайн.** Макеты в Figma подготовил Chambram во время хакатона.
 
-`POST /run` receives `{"case": 4, "dataset_code": "..."}`, downloads
-`getData` once with the incoming organizer Bearer token, validates the dataset
-contract, and returns the full `Case4Answers` JSON in the same response. The
-download, candidate index build, retrieval and generation share a 42-minute
-deadline inside the stand's 45-minute limit. The candidate dataset is published
-only after the run succeeds or a valid cache entry is found, so a failed run
-cannot replace the runtime serving `/chat`. A transient proxy failure pauses
-and retries later records instead of disabling generation for the run. If one
-group cannot use the model, the backend returns a safe extractive answer or a
-refusal with a real citation rather than invalid JSON.
+## 5. Журнал решений
 
-`/chat` uses a separate browser credential issued by `POST /session`; send it
-as `Authorization: Bearer <browser-token>`. The organizer `/run` token and the
-LLM key are never accepted as browser credentials and are never logged. Every
-chat response carries a `dataset_generation`; pass it to `/source` to avoid
-showing a section from a newer dataset. Optional `turn_id` values make a lost
-turn replayable without spending the model budget twice. `/chat` does not wait
-for an official `/run`, and chat calls are capped atomically so the run's
-quota reserve always survives.
-
-The organizer backend environment has Python 3.11, 512 MB RAM, one CPU core, no GPU, and outbound access restricted to the hackathon API and LLM proxy. `/tmp` is limited to 256 MB and is not persistent across deployments. Rebuild or restore the index after deployment. Run exactly one Uvicorn worker: the runtime, browser sessions and LLM counters are process-local, and `start.sh` starts one worker. The shared chat allowance is 30 requests/minute and 300,000 tokens/day; the CLI's local token budget does not account for other team members' usage.
-
-See the [technical-constraints PDFs](output/pdf/) and the local organizer README for deployment details. Keep `team19/`, environment files, generated SQLite indexes, and run reports out of commits.
+| Что пробовали или рассматривали | К чему пришли |
+| --- | --- |
+| Длинные системные инструкции и полные описания экспертов | Сравнили с компактным профилем. Для основного прогона выбрали короткие правила и отдельный компактный промпт каждого эксперта, чтобы экономить токены. |
+| Генерация полного JSON с исходными ID статей и разделов | В компактном режиме модель возвращает номера фрагментов. Агент сверяет номера с контекстом и сам подставляет исходные ID. |
+| Узкий набор результатов лексического поиска | Расширили пул кандидатов и добавили тематические запросы. Это улучшило покрытие допустимых статей на наборе разработки. |
+| Независимый подбор источников для каждого эксперта | В `/run` сначала выбираем общий раздел для тройки. Эксперты различаются объяснением и тоном, сохраняя общую ссылку. |
+| Векторный и гибридный поиск | Для стенда выбрали локальный SQLite/BM25. Он строит индекс из выданных статей и укладывается в схему запуска с ограниченными ресурсами и сетевым доступом. |
+| Регистрация и хранение пользовательских профилей | Для зачётной версии выбрали серверные сессии и профиль из набора организаторов. Собственные предзагруженные профили не подходят для проверки, а полноценная регистрация усложнила бы хранение и развёртывание. |
+| Дизайн отдельного мобильного приложения | Для проверки подготовили веб-клиент, который можно открыть на компьютере организаторов. К мобильному варианту планируем вернуться к воскресенью, 22 ноября, если команда выйдет в финал. |
+| Более сложное устройство бэкенда и хранение состояния между процессами | Для стенда выбрали один процесс Uvicorn, временный индекс в SQLite и состояние сессий в памяти. Это упрощает запуск в рамках ограничений по памяти и хранилищу. |

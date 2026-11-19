@@ -18,7 +18,7 @@ implementation lives in `backend/`:
 | `backend/chat.py` | browser sessions, quota ceilings, idempotent turns, `/session` and `/chat` |
 | `backend/routes_run.py` | official `/run` handler and transactional publication |
 | `backend/catalog.py` | `/experts` and `/source` |
-| `backend/app.py` | FastAPI assembly, admission middleware, health and static client |
+| `backend/app.py` | FastAPI assembly, admission middleware, health and API routers |
 
 Tests patch the owning module (`backend.state`, `backend.chat`, …) instead of
 `main`. Move a function only together with the state it owns; runtime, sessions
