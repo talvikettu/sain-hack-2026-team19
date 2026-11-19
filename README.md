@@ -9,6 +9,7 @@ The application answers sleep-related questions through three fictional experts:
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
 - **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
 - **Run the agent on example questions:** [Agent guide](rag_agent/README.md).
+- **Review compact prompt behavior and measurements:** [Prompt audit](prompt_audit.md).
 - **Check retrieval coverage:** [Current compact retrieval results](#current-compact-retrieval-results).
 - **Read the published sample answers:** [First 10 questions — compact run](reports/rag_compact_first10/report.md).
 - **Review the published sample's accuracy, latency, and token usage:** [First-ten evaluation](reports/rag_compact_first10/EVALUATION.md).
@@ -20,7 +21,7 @@ This navigation page is in English. Most detailed project documents and example 
 
 | Directory | Contents |
 |---|---|
-| [`prompts/`](prompts/) | Original system and expert prompts, plus the compact runtime system prompt. |
+| [`prompts/`](prompts/) | Compact system and expert prompts, plus the original full versions. |
 | [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
 | [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
@@ -43,7 +44,7 @@ The original case specification is available as a PDF in the repository root.
 | [`biohacker.md`](prompts/biohacker.md) | Original experimental biohacker metaprompt. |
 | [`nutritionist.md`](prompts/nutritionist.md) | Original common-sense nutritionist metaprompt. |
 
-The default `compact` profile uses `system_compact.md` and the selected expert's organizer-provided `role` and `speech_style` from the dataset. It does **not** concatenate the original long persona files as well. The `full` profile retains the earlier prompt assembly.
+The default `compact` profile combines `system_compact.md` with one local expert prompt selected by `expert_id`. The compact role files follow the organizer's descriptions in `data/experts/`. The `full` profile retains the original persona files and earlier prompt assembly.
 
 ### Dev materials
 
