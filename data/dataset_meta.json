@@ -1,9 +1,0 @@
-{
-  "schema_version": "0.3.0",
-  "dataset_id": "case4-dev-v2",
-  "case_id": 4,
-  "phase": "dev",
-  "version": "2",
-  "generated_at": "2026-11-15T22:18:07+03:00",
-  "history_through": "2026-11-11"
-}

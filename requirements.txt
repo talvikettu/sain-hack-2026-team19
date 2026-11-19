@@ -1,2 +1,7 @@
+# Backend runtime
 fastapi==0.162.6
+pydantic==2.14.4
 uvicorn==0.54.0
+
+# FastAPI TestClient transport for the backend contract suite
+httpx2==2.16.2
