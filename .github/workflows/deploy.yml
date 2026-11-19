@@ -1,0 +1,54 @@
+# Деплой бэкенда команды team19 на стенд хакатона Sain x Школа 21.
+# Положите файл в .github/workflows/deploy.yml и заведите один секрет репозитория STAND_SSH_KEY:
+# всё содержимое файла id_ed25519 из набора команды. Адрес стенда и его ключ хоста уже прописаны ниже.
+# Бэкенд после деплоя: https://team19.hack.be-healthy.tech
+# Секреты STAND_HOST и STAND_KNOWN_HOSTS не нужны; заводите их, только если попросят организаторы.
+name: Деплой на стенд хакатона
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: hackathon-stand-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Настроить SSH
+        env:
+          STAND_SSH_KEY: ${{ secrets.STAND_SSH_KEY }}
+          STAND_KNOWN_HOSTS: ${{ secrets.STAND_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$STAND_SSH_KEY" ]; then
+            echo "Нет секрета STAND_SSH_KEY: заведите его (содержимое id_ed25519 из набора команды)" >&2
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$STAND_SSH_KEY" > ~/.ssh/stand_key
+          chmod 600 ~/.ssh/stand_key
+          if [ -n "$STAND_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$STAND_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            cat > ~/.ssh/known_hosts <<'KNOWN_HOSTS'
+          hack.be-healthy.tech ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEWfiX3RbhPXwr0/zVNMpnXeOXA1U9jSRSyvWgxIYus5
+          hack.be-healthy.tech ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGAyx9VOzd3sR26Gz3Kn2qVci99YCbiLNZVEVs1ssB5UkW+h6NyKQ8Ybdjpy8nr9gleNMfAlS5hQvGBLXP8+yzs=
+          hack.be-healthy.tech ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDqfegem8JgdOqWVbJNqzZM/FR+kUD5GqF4b7OOE33l3o3vL7p4oV3UjjAzg9FjFsL8pjEEcu6C+bU6k575P1pnZGtTF3SJh7f7aqPD3MgabHYAbkMtor4/L1bNFm399NEbxllJjV4HoC3T2LipzArHDSvaDhSmwinkLis8bUALwdDhm1orcBBzZsM6jrXjBi5pBWt9jmjMB7N9fu1raMRiBD9ISd5i/d/pUzpv67dyLRPyG9gY8b9ekVmBkdYIbyRixSQj/DYmlOqP3B9q1HssMsq8IGn2ACCGNZosRSA6XjCIzg2cVSJNfhQPN1CZeqvnE8y4Az5Z+VDpIR4CejjyDGhMsU6XggQNGZjXApStkxGitvAYt6sVdE0WB7aXh+k6PgNILVHNLJHbwndWbA0GDWypgYqY0Uy/WnY1KHoPl6aEAdlBqPDy15xyMA0vfylJ8xPEF4jz4kNfOcFXS89JmAkMtuaYA2bN4fjE/io8DjEDg3+MONfLbPFH74yLSjM=
+          KNOWN_HOSTS
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Отправить код и собрать на стенде
+        env:
+          STAND_HOST: ${{ secrets.STAND_HOST || 'hack.be-healthy.tech' }}
+        run: |
+          git archive --format=tar.gz HEAD | ssh -i ~/.ssh/stand_key \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            "deploy@$STAND_HOST" "deploy $GITHUB_SHA"
