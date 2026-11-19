@@ -7,6 +7,7 @@ The application answers sleep-related questions through three fictional experts:
 ## Start here
 
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
+- **Read the end-to-end architecture and latest changes:** [RAG system guide](docs/RAG_SYSTEM.md).
 - **Run preprocessing or retrieval:** [Preprocessing guide](rag_preprocessing/README.md).
 - **Run the agent on example questions:** [Agent guide](rag_agent/README.md).
 - **Review compact prompt behavior and measurements:** [Prompt audit](prompt_audit.md).
