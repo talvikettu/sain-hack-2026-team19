@@ -56,8 +56,11 @@ async function sendChat(state, payload) {
   } catch (error) {
     if (error.status !== 401) throw error;
     // The dataset may have been replaced by a new /run, which invalidates
-    // browser sessions. Issue one new session and replay this turn once.
-    return api.chat(payload, await issueSession(state));
+    // browser sessions. Start a fresh conversation and replay this turn once.
+    state.session = undefined;
+    const retryPayload = { ...payload };
+    delete retryPayload.session_id;
+    return api.chat(retryPayload, await issueSession(state));
   }
 }
 function renderExperts() {
