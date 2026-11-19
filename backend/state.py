@@ -33,7 +33,7 @@ class Runtime:
         self.dataset = dataset
         self.client = client
         self.agent = agent
-        self.index_path = Path(index_path or getattr(agent, "index", INDEX_PATH))
+        self.index_path = Path(index_path or getattr(agent, "index", None) or INDEX_PATH)
         # Browser sessions belong to one active dataset and one server-selected
         # user. Switching /run datasets invalidates the previous runtime object.
         self.dataset_key = dataset_key or ""

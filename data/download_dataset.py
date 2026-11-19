@@ -13,6 +13,15 @@ def write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def manifest_entry(path):
+    content = path.read_bytes().replace(b'\r\n', b'\n')
+    return {
+        'path': path.relative_to(ROOT).as_posix(),
+        'bytes': len(content),
+        'sha256': hashlib.sha256(content).hexdigest(),
+    }
+
+
 def safe_id(value):
     if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', value):
         raise ValueError('Unsafe identifier')
@@ -86,10 +95,11 @@ if __name__ == '__main__':
     write_json(ROOT / 'inventory.json', {'downloaded_at_utc': datetime.now(timezone.utc).isoformat(),
                 'meta': dataset['meta'], 'counts': counts, 'sections': len(sections)})
     del bundle, dataset
-    files = sorted(p for p in ROOT.rglob('*') if p.is_file() and p.name not in ('manifest.json', 'validation_report.json') and '__pycache__' not in p.parts)
+    generated = {'manifest.json', 'validation_report.json', 'api-health.json'}
+    files = sorted(p for p in ROOT.rglob('*')
+                   if p.is_file() and p.name not in generated and '__pycache__' not in p.parts)
     write_json(ROOT / 'manifest.json', {'articles': 20, 'experts': 3, 'sections': len(sections),
                'counts': counts, 'full_bundle_retained': True,
-               'files': [{'path': p.relative_to(ROOT).as_posix(), 'bytes': p.stat().st_size,
-                          'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]})
+               'files': [manifest_entry(p) for p in files]})
     print(f'Saved 20 articles, 3 experts, {len(sections)} sections; full development bundle retained locally')
     print('Inventory counts:', counts)

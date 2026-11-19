@@ -111,7 +111,7 @@ class _FakeChat:
             raise AssertionError("fake chat needs evidence")
         refs = [block["ref"] for block in payload["evidence"]]
         return {
-            "content": json.dumps({"text": "Ответ" + "".join(f"[{ref}]" for ref in refs) + ".\n\nВторой абзац.", "refused": False, "refs": refs}),
+            "content": json.dumps({"decision": "answer", "text": "Ответ" + "".join(f"[{ref}]" for ref in refs) + ".\n\nВторой абзац.", "refs": refs}),
             "finish_reason": "stop",
             "usage": {"total_tokens": 100},
             "seconds": 0.0,
@@ -262,11 +262,11 @@ class RunContractTests(unittest.TestCase):
 
         agent = OnceThrottledAgent()
         context = answering.RunContext(retry_delays=(0,))
-        started = time.monotonic()
-        result = answering._answer_requests(
-            agent, dataset, time.monotonic() + 30, context
-        )
-        self.assertGreaterEqual(time.monotonic() - started, 0.05)
+        with patch.object(answering.time, "sleep") as sleep:
+            result = answering._answer_requests(
+                agent, dataset, time.monotonic() + 30, context
+            )
+        sleep.assert_called_once_with(0.05)
         self.assertEqual(context.retries, 1)
         self.assertEqual(context.generated, 3)
         self.assertEqual(agent.attempts, 4)
@@ -813,6 +813,14 @@ class HttpHandlerTests(unittest.TestCase):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"team": config.TEAM, "status": "ok"})
+
+    def test_frontend_is_served_from_source(self):
+        for url, filename in (("/", "index.html"), ("/app.js", "app.js"),
+                              ("/api.js", "api.js"), ("/styles.css", "styles.css")):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, (config.WEB_DIR / filename).read_bytes())
 
     def test_run_requires_a_bearer_token(self):
         response = self.client.post("/run", json={"case": 4, "dataset_code": "code"})

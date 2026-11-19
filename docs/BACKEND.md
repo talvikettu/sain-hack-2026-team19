@@ -46,7 +46,7 @@ Do not put the token or key values into the repository, logs, or chat.
 
 | Method | Purpose |
 |---|---|
-| `GET /` | JSON health page, or `web/dist/index.html` when the client is present |
+| `GET /` | Static client from `web/src/index.html`, with a JSON health response as a fallback |
 | `GET /health` | `{"team":"team19","status":"ok"}` |
 | `POST /session` | issue a short-lived browser token for `/chat` |
 | `POST /run` | complete online/final run; fetches `getData` with the incoming Bearer token |
@@ -270,14 +270,5 @@ export DEV_DATASET_CODE=case4-dev-v2
 The backend then lazy-loads the dev dataset with `HACK_TEAM_TOKEN`. On the stand
 `DEV_DATASET_CODE` is unset; `/run` supplies the online/final dataset.
 
-When the frontend is ready, put its build in `web/dist/` and commit it: the
-stand installs Python dependencies only and does not run Node.
-
-## Before the final submission
-
-The case's customer wishes (`Кейс 4.pdf`, section 6) still need README numbers:
-
-- time from adding a new article with one command to experts citing it;
-- cost of adding a new expert.
-
-These are documentation tasks for the final README, not runtime code.
+FastAPI serves the static client directly from `web/src/`. The stand
+installs only the Python dependencies.

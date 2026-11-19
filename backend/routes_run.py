@@ -136,14 +136,13 @@ def run(request: RunRequest, authorization: str | None = Header(default=None)) -
         calls_used = max(0, client_calls(runtime.client) - calls_before)
         tokens_used = max(0, client_tokens(runtime.client) - tokens_before)
         clean = (
-            cache_key is not None
-            and context.fallbacks == 0
+            context.fallbacks == 0
             and context.retrieval_failures == 0
             and context.group_citation_failures == 0
             and context.unsupported_fallbacks == 0
             and not context.skip_llm
         )
-        if clean:
+        if cache_key is not None and clean:
             try:
                 cache._cache_store(cache_key, result)
             except Exception as exc:

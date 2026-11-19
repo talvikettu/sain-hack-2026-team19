@@ -27,7 +27,7 @@ RUN_RESERVED_CALLS = 105
 RUN_RESERVED_TOKENS = 220_000
 INDEX_PATH = Path(os.environ.get("CASE4_INDEX_PATH", "/tmp/case4-index.sqlite3"))
 INDEX_MAX_RETAINED = 2
-DIST_DIR = Path(__file__).resolve().parents[1] / "web" / "dist"
+WEB_DIR = Path(__file__).resolve().parents[1] / "web" / "src"
 
 LLM_TIMEOUT_SECONDS = 120
 LLM_MAX_CALLS = 150

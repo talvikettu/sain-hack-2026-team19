@@ -11,7 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, build_opener
 
-from rag_agent.agent import PERSONA_FILES
+from rag_agent.prompts import PERSONA_FILES
 from rag_preprocessing.embeddings import NoRedirect
 
 from .config import (
@@ -36,14 +36,11 @@ def _set_response_timeout(response, seconds: float) -> None:
     """Apply the remaining total deadline to the underlying socket."""
     if seconds <= 0:
         raise TimeoutError("dataset API read timed out")
-    candidates = []
     fp = getattr(response, "fp", None)
     raw = getattr(fp, "raw", None)
-    candidates.extend(
-        item for item in (getattr(raw, "_sock", None), raw, fp)
-        if item is not None and hasattr(item, "settimeout")
-    )
-    for item in candidates:
+    for item in (getattr(raw, "_sock", None), raw, fp):
+        if item is None or not hasattr(item, "settimeout"):
+            continue
         try:
             item.settimeout(seconds)
             return

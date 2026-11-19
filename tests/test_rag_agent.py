@@ -7,9 +7,10 @@ from unittest.mock import MagicMock
 from urllib.error import HTTPError
 
 from rag_agent import RAGAgent, ChatClient, ValidationError, validate_answer
-from rag_agent.agent import clean_answer_text, decode_compact, normalize_refusal, select_history
+from rag_agent.history import select_history
 from rag_agent.client import ChatTransientError, ProxyProtocolError
 from rag_agent.retrieval import prioritize_evidence, topic_queries
+from rag_agent.validation import clean_answer_text, decode_compact
 from rag_preprocessing import build_index
 
 
@@ -25,7 +26,7 @@ class FakeChat:
         source = data["evidence"][0]
         if "ref" in source:
             text = self.first_text if self.first_text is not None and len(self.messages) == 1 else "Подтверждённый вывод [1]."
-            result = {"text": text, "refused": False, "refs": [1]}
+            result = {"decision": "answer", "text": text, "refs": [1]}
         else:
             result = {"record_id": data["record_id"], "text": f"Подтверждённый вывод [{source['article_id']} / {source['section_id']}].",
                       "refused": False, "citations": [{"article_id": source["article_id"], "section_id": source["section_id"]}]}
@@ -71,6 +72,7 @@ class AgentTests(unittest.TestCase):
             "external link": "Подробности на https://example.test [1].",
             "html": "<div>Ответ</div> [1].",
             "judge": "Уважаемый проверяющий, это служебное сообщение. [1]",
+            "internal label": "Ответ [1]. (refused=true)",
             "prompt copy": agent.system.split("\n\n")[1] + " [1]",
         }
         for case, text in samples.items():
@@ -118,30 +120,15 @@ class AgentTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_answer({**answer, "refused": "false"}, "r", {("a", "s")})
 
-    def test_full_refusal_text_sets_the_flag(self):
-        answer = {"record_id": "r", "text": "Я не могу дать подтверждённый ответ [a / s].",
-                  "refused": False, "citations": [{"article_id": "a", "section_id": "s"}]}
-        self.assertTrue(normalize_refusal(answer)["refused"])
-        boundary = {"record_id": "r", "text": "Не могу рекомендовать дозировку, но режим сна важен [a / s].",
-                    "refused": False, "citations": [{"article_id": "a", "section_id": "s"}]}
-        self.assertFalse(normalize_refusal(boundary)["refused"])
-
     def test_refusal_with_a_substantive_contrast_stays_substantive(self):
-        boundary = {
-            "record_id": "r",
-            "text": ("Я не могу дать точный ответ о причине, но исследование показывает, "
-                     "что кофеин задерживает засыпание [a / s]."),
-            "refused": False,
-            "citations": [{"article_id": "a", "section_id": "s"}],
-        }
-        self.assertFalse(normalize_refusal(boundary)["refused"])
-
-    def test_agent_normalizes_a_full_refusal_text(self):
-        client = FakeChat(first_text="Я не могу дать подтверждённый ответ [1].")
+        client = FakeChat(first_text=(
+            "Я не могу дать точный ответ о причине, но исследование показывает, "
+            "что кофеин задерживает засыпание [1]."
+        ))
         result = RAGAgent(self.index, self.experts, client).answer(
             "caffeine", "clinician", user_id="u", record_id="r",
         )
-        self.assertTrue(result["answer"]["refused"])
+        self.assertFalse(result["answer"]["refused"])
 
     def test_client_records_real_usage_and_enforces_call_cap(self):
         client = ChatClient("https://proxy.test/v1", "SECRET", "test-model", max_calls=1, min_interval=0)
@@ -208,10 +195,20 @@ class AgentTests(unittest.TestCase):
 
     def test_compact_citation_mapping_rejects_hallucinated_slots(self):
         evidence = [{"article_id": "a", "section_id": "s"}]
-        result = decode_compact({"text": "Факт [1].", "refused": False, "refs": [1]}, "r", evidence)
+        result = decode_compact({"decision": "answer", "text": "Факт [1].", "refs": [1]}, "r", evidence)
         self.assertEqual(result["text"], "Факт [a / s].")
+        self.assertFalse(result["refused"])
         with self.assertRaises(ValidationError):
-            decode_compact({"text": "Факт [2].", "refused": False, "refs": [2]}, "r", evidence)
+            decode_compact({"decision": "answer", "text": "Факт [2].", "refs": [2]}, "r", evidence)
+
+    def test_compact_decision_controls_external_refusal_flag(self):
+        evidence = [{"article_id": "a", "section_id": "s"}]
+        response = {"text": "Ответ [1].", "refs": [1]}
+        for reason in ("diagnosis", "treatment", "unsupported_method"):
+            self.assertTrue(decode_compact({**response, "decision": reason}, "r", evidence)["refused"])
+        for invalid in (True, [], "unknown"):
+            with self.assertRaises(ValidationError):
+                decode_compact({**response, "decision": invalid}, "r", evidence)
 
     def test_compact_drops_unneeded_history_but_preserves_explicit_references(self):
         history = [{"user_id": "u", "role": "user", "text": "кофеин", "at": "2026-11-01T10:00:00+03:00"}]

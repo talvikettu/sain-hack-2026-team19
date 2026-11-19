@@ -1,12 +1,12 @@
 team19/
 
-# Local evaluation material: keep it on disk for development, never ship it
-data/dataset.json
-data/reference.json
-data/raw/case4-dev-v2.json
-
 # Local preprocessing artifacts and Python caches
 tmp/
+web/dist/
+reports/
+/prompt_audit.md
+data/validation_report.json
+data/raw/api-health.json
 .rag-cache/
 __pycache__/
 *.py[cod]

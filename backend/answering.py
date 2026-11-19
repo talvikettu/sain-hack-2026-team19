@@ -18,6 +18,7 @@ from .config import (
     TRANSIENT_COOLDOWN_BASE_SECONDS, TRANSIENT_COOLDOWN_MAX_SECONDS,
 )
 from .log import logger
+from .state import Runtime
 
 class RunContext:
     def __init__(self, retry_delays: tuple[float, ...] = (5.0, 10.0),
@@ -350,7 +351,7 @@ def _fallback_answer(
             "clinician": "С точки зрения данных: ",
             "biohacker": "Если смотреть на исследования: ",
             "nutritionist": "Проще всего опереться на данные: ",
-        }.get(expert_id, "По данным базы: ")
+        }.get(expert_id or "", "По данным базы: ")
         if quote:
             text = (
                 intro + quote + " Это то, что можно уверенно сказать по источнику; "

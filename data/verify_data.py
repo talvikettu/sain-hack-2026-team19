@@ -1,8 +1,9 @@
 """Verify local source extraction without network calls or displaying dataset contents."""
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
+
+from download_dataset import manifest_entry
 
 ROOT = Path(__file__).resolve().parent
 
@@ -43,13 +44,12 @@ reference = bundle['reference']
 assert isinstance(reference, dict)
 assert {r['record_id'] for r in reference['requests']} == {r['record_id'] for r in requests}
 
-# All manifest paths stay in data; compare byte-for-byte hashes of all listed files.
+# Compare hashes with LF line endings on all platforms.
 manifest = read('manifest.json')
 for item in manifest['files']:
     path = (ROOT / item['path']).resolve()
     assert path.is_relative_to(ROOT.resolve())
-    assert path.stat().st_size == item['bytes']
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256']
+    assert manifest_entry(path) == item, item['path']
 
 report = {'verified_at_utc': datetime.now(timezone.utc).isoformat(), 'status': 'passed',
           'articles': 20, 'experts': 3, 'sections': len(sections), 'requests': len(requests),

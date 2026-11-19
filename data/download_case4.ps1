@@ -8,8 +8,6 @@ $tokenFile = Join-Path (Split-Path -Parent $dataRoot) 'api.token'
 $teamToken = [System.IO.File]::ReadAllText($tokenFile).Trim()
 if ([string]::IsNullOrWhiteSpace($teamToken)) { throw 'Team API token is empty' }
 try {
-    Invoke-WebRequest -Uri ($apiRoot + '/health') -UseBasicParsing -TimeoutSec 30 -MaximumRedirection 0 `
-        -OutFile (Join-Path $rawRoot 'api-health.json') | Out-Null
     Invoke-WebRequest -Uri ($apiRoot + '/case/4/getData?dataset_code=case4-dev-v2') `
         -Headers @{ Authorization = 'Bearer ' + $teamToken; Accept = 'application/json' } `
         -UseBasicParsing -TimeoutSec 120 -MaximumRedirection 0 `
