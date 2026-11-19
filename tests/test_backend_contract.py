@@ -810,17 +810,11 @@ class HttpHandlerTests(unittest.TestCase):
             cache._run_cache.clear()
 
     def test_health_is_public(self):
-        response = self.client.get("/health")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"team": config.TEAM, "status": "ok"})
-
-    def test_frontend_is_served_from_source(self):
-        for url, filename in (("/", "index.html"), ("/app.js", "app.js"),
-                              ("/api.js", "api.js"), ("/styles.css", "styles.css")):
+        for url in ("/", "/health"):
             with self.subTest(url=url):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.content, (config.WEB_DIR / filename).read_bytes())
+                self.assertEqual(response.json(), {"team": config.TEAM, "status": "ok"})
 
     def test_run_requires_a_bearer_token(self):
         response = self.client.post("/run", json={"case": 4, "dataset_code": "code"})

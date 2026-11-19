@@ -1,4 +1,4 @@
-"""FastAPI assembly: middleware, health, routers and the static client."""
+"""FastAPI assembly: middleware, health and API routers."""
 
 from __future__ import annotations
 
@@ -6,12 +6,11 @@ import threading
 import uuid
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 from . import catalog, chat, routes_run
 from .config import (
-    CASE_ID, MAX_INFLIGHT_REQUESTS, TEAM, WEB_DIR, _REQUEST_ID_HEADER,
+    CASE_ID, MAX_INFLIGHT_REQUESTS, TEAM, _REQUEST_ID_HEADER,
     _REQUEST_ID_PATTERN,
 )
 from .context import bind_request_id, reset_request_id
@@ -51,13 +50,6 @@ async def _request_context(request: Request, call_next):
 
 
 @app.get("/")
-def root():
-    index = WEB_DIR / "index.html"
-    if index.is_file():
-        return FileResponse(index)
-    return {"team": TEAM, "status": "ok"}
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"team": TEAM, "status": "ok"}
@@ -66,6 +58,3 @@ def health() -> dict[str, str]:
 app.include_router(catalog.router)
 app.include_router(chat.router)
 app.include_router(routes_run.router)
-
-if (WEB_DIR / "index.html").is_file():
-    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

@@ -2,7 +2,6 @@ team19/
 
 # Local preprocessing artifacts and Python caches
 tmp/
-web/dist/
 reports/
 /prompt_audit.md
 data/validation_report.json

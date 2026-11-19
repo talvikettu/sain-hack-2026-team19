@@ -220,7 +220,7 @@ def _get_runtime() -> Runtime:
     if not dev_code or not team_token:
         raise HTTPException(status_code=503, detail="Dataset is not loaded yet")
 
-    # Local frontend development only. On the stand DEV_DATASET_CODE is unset
+    # Local API development only. On the stand DEV_DATASET_CODE is unset
     # and /run provides the online/final dataset.
     with _init_lock:
         runtime = _active_runtime()

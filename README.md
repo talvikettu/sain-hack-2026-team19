@@ -1,12 +1,11 @@
 # Sain Hackathon — Case 4: Expert as a Playlist
 
-This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, a web client, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
+This repository contains expert prompts, a scientific-article preprocessing pipeline, a RAG agent, the FastAPI stand backend, and local evaluation tools for case 4 of the Sain × School 21 hackathon.
 
 The application answers sleep-related questions through three fictional experts: a clinical sleep specialist (`clinician`), an experimental biohacker (`biohacker`), and a common-sense nutritionist (`nutritionist`). Answers must rely on the organizer-provided articles and include original article/section references.
 
 ## Start here
 
-- **Run or build the frontend:** [Frontend guide (RU)](web/README.md).
 - **Configure the HTTP backend:** [Backend guide](docs/BACKEND.md).
 - **Understand the pipeline:** [RAG preprocessing design](docs/RAG_PREPROCESSING_PIPELINE_RU.md).
 - **Read the end-to-end architecture and latest changes:** [RAG system guide](docs/RAG_SYSTEM.md).
@@ -25,7 +24,6 @@ This navigation page is in English. Most detailed project documents and example 
 | [`rag_preprocessing/`](rag_preprocessing/) | Parsing, cleaning, structural/semantic chunking, metadata, SQLite storage, BM25, optional embeddings, vector search, and context assembly. |
 | [`rag_agent/`](rag_agent/) | Expert selection, history filtering, retrieval orchestration, LLM proxy client, response validation, and the example-run CLI. |
 | [`backend/`](backend/) | FastAPI routes, runtime state, organizer access, run cache, and chat sessions. `main.py` is the `uvicorn main:app` entrypoint. |
-| [`web/`](web/) | Dependency-free mobile web client. FastAPI serves the static files in `web/src/` at `/`. |
 | [`tests/`](tests/) | Synthetic unit/integration tests. These do not call an external LLM or consume team quota. |
 | [`data/`](data/) | Organizer dev dataset, reference labels, and API schemas for offline development. Git archives for the stand omit this directory. |
 | [`docs/`](docs/) | Pipeline architecture and token-optimization documentation. |
@@ -127,7 +125,7 @@ Inspect `tmp/rag_preview/preview.json` locally. It contains the prepared prompts
 
 ### 4. Run the first 10 questions against the LLM
 
-Configure `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in the environment using the organizer-issued settings. Keep actual credentials out of commands shared in chat, source files, reports, and frontend code.
+Configure `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in the environment using the organizer-issued settings. Keep actual credentials out of commands shared in chat, source files, and reports.
 
 ```powershell
 python -m rag_agent --limit 10 --profile compact --token-budget 60000 --output tmp/rag_demo_new
@@ -137,7 +135,7 @@ This command consumes the team's shared LLM quota. Select a new output directory
 
 ## Integration and hosting limits
 
-FastAPI serves the web client at `/` alongside `/run`, `/session`, `/experts`, `/chat`, and `/source/{article_id}/{section_id}`. See the [backend guide](docs/BACKEND.md) for deployment and quota settings, and the [frontend guide](web/README.md) for client development.
+FastAPI returns JSON health status at `/` and `/health`. The [backend guide](docs/BACKEND.md) lists the API routes, deployment settings, and quota limits.
 
 `POST /run` receives `{"case": 4, "dataset_code": "..."}`, downloads
 `getData` once with the incoming organizer Bearer token, validates the dataset

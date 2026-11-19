@@ -46,7 +46,7 @@ Do not put the token or key values into the repository, logs, or chat.
 
 | Method | Purpose |
 |---|---|
-| `GET /` | Static client from `web/src/index.html`, with a JSON health response as a fallback |
+| `GET /` | JSON health status |
 | `GET /health` | `{"team":"team19","status":"ok"}` |
 | `POST /session` | issue a short-lived browser token for `/chat` |
 | `POST /run` | complete online/final run; fetches `getData` with the incoming Bearer token |
@@ -258,10 +258,9 @@ stub and run `scripts/dev_run.py` against it. That verifies the HTTP path,
 grouping, cache and `/case/4/validate`, but not `gpt-6-luna` answer quality.
 The stub is for local development only and is not part of the repository.
 
-## Local client development
+## Local API development
 
-Before `/run` has loaded a dataset, the client endpoints are empty. To work on
-the frontend against the dev corpus:
+Set a dev dataset code to exercise the client API before `/run` loads a dataset:
 
 ```bash
 export DEV_DATASET_CODE=case4-dev-v2
@@ -269,6 +268,3 @@ export DEV_DATASET_CODE=case4-dev-v2
 
 The backend then lazy-loads the dev dataset with `HACK_TEAM_TOKEN`. On the stand
 `DEV_DATASET_CODE` is unset; `/run` supplies the online/final dataset.
-
-FastAPI serves the static client directly from `web/src/`. The stand
-installs only the Python dependencies.
